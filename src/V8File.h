@@ -91,191 +91,192 @@ ULONGLONG _httoi64(const char *value);
 
 class CV8Elem;
 
+struct stFileHeader
+{
+	DWORD next_page_addr;
+	DWORD page_size;
+	DWORD storage_ver;
+	DWORD reserved; // всегда 0x00000000 ?
+
+	static UINT Size()
+	{
+		return 4 + 4 + 4 + 4;
+	}
+
+};
+
+struct stFileHeader64
+{
+	ULONGLONG next_page_addr;  // 64 бита стало
+	DWORD page_size;
+	DWORD storage_ver;
+	DWORD reserved; // всегда 0x00000000 ?
+
+	static UINT Size()
+	{
+		return 8 + 4 + 4 + 4;
+	}
+};
+
+struct stElemAddr
+{
+	DWORD elem_header_addr;
+	DWORD elem_data_addr;
+	DWORD fffffff; //всегда 0x7fffffff ?
+
+	static UINT Size()
+	{
+		return 4 + 4 + 4;
+	}
+
+	static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
+};
+
+struct stElemAddr64
+{
+	// каждый элемент стал 64 бита
+	ULONGLONG elem_header_addr;
+	ULONGLONG elem_data_addr;
+	ULONGLONG fffffff; //всегда 0xffffffffffffffff ?
+
+	static UINT Size()
+	{
+		return 8 + 8 + 8;
+	}
+
+	static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
+};
+
+struct stBlockHeader
+{
+	char EOL_0D;
+	char EOL_0A;
+	char data_size_hex[8] = {'0', '0', '0', '0', '0', '0', '0', '0'};
+	char space1;
+	char page_size_hex[8] = {'0', '0', '0', '0', '0', '0', '0', '0'};
+	char space2;
+	char next_page_addr_hex[8] = {'7', 'f', 'f', 'f', 'f', 'f', 'f', 'f'};
+	char space3;
+	char EOL2_0D;
+	char EOL2_0A;
+
+	stBlockHeader():
+			EOL_0D(0xd), EOL_0A(0xa),
+			space1(' '), space2(' '), space3(' '),
+			EOL2_0D(0xd), EOL2_0A(0xa)
+	{}
+
+	static stBlockHeader create(uint32_t block_data_size, uint32_t page_size, uint32_t next_page_addr);
+
+	static UINT Size()
+	{
+		return 1 + 1 + 8 + 1 + 8 + 1 + 8 + 1 + 1 + 1;
+	};
+
+	bool IsCorrect() const
+	{
+		return EOL_0D == 0x0d
+			   && EOL_0A == 0x0a
+			   && space1 == 0x20
+			   && space2 == 0x20
+			   && space3 == 0x20
+			   && EOL2_0D == 0x0d
+			   && EOL2_0A == 0x0a;
+	}
+
+	uint32_t data_size() const {
+		return _httoi(data_size_hex);
+	}
+
+	uint32_t page_size() const {
+		return _httoi(page_size_hex);
+	}
+
+	uint32_t next_page_addr() const {
+		return _httoi(next_page_addr_hex);
+	}
+
+	static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
+};
+
+struct stBlockHeader64
+{
+	char EOL_0D;
+	char EOL_0A;
+	char data_size_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
+	char space1;
+	char page_size_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
+	char space2;
+	char next_page_addr_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
+	char space3;
+	char EOL2_0D;
+	char EOL2_0A;
+
+	stBlockHeader64() :
+			EOL_0D(0xd), EOL_0A(0xa),
+			space1(' '), space2(' '), space3(' '),
+			EOL2_0D(0xd), EOL2_0A(0xa)
+	{
+
+	}
+
+	static stBlockHeader64 create(ULONGLONG block_data_size, ULONGLONG page_size, ULONGLONG next_page_addr);
+
+	static UINT Size()
+	{
+		return 1 + 1 + 16 + 1 + 16 + 1 + 16 + 1 + 1 + 1; // 55 теперь
+	};
+
+	bool IsCorrect() const
+	{
+		return EOL_0D == 0x0d
+			   && EOL_0A == 0x0a
+			   && space1 == 0x20
+			   && space2 == 0x20
+			   && space3 == 0x20
+			   && EOL2_0D == 0x0d
+			   && EOL2_0A == 0x0a;
+	}
+
+	uint64_t data_size() const {
+		return _httoi64(data_size_hex);
+	}
+
+	uint64_t page_size() const {
+		return _httoi64(page_size_hex);
+	}
+
+	uint64_t next_page_addr() const {
+		return _httoi64(next_page_addr_hex);
+	}
+
+	static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
+};
+
+struct Format15
+{
+	typedef stFileHeader  file_header_t;
+	typedef stBlockHeader block_header_t;
+	typedef stElemAddr    elem_addr_t;
+
+	static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
+	static const std::streamoff BASE_OFFSET = 0;
+};
+
+struct Format16
+{
+	typedef stFileHeader64  file_header_t;
+	typedef stBlockHeader64 block_header_t;
+	typedef stElemAddr64    elem_addr_t;
+
+	static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
+	static const std::streamoff BASE_OFFSET = 0x1359;
+};
+
+
 class CV8File
 {
 public:
-
-	struct stFileHeader
-	{
-		DWORD next_page_addr;
-		DWORD page_size;
-		DWORD storage_ver;
-		DWORD reserved; // всегда 0x00000000 ?
-
-		static UINT Size()
-		{
-			return 4 + 4 + 4 + 4;
-		}
-
-	};
-
-	struct stFileHeader64
-	{
-		ULONGLONG next_page_addr;  // 64 бита стало
-		DWORD page_size;
-		DWORD storage_ver;
-		DWORD reserved; // всегда 0x00000000 ?
-
-		static UINT Size()
-		{
-			return 8 + 4 + 4 + 4;
-		}
-	};
-
-	struct stElemAddr
-	{
-		DWORD elem_header_addr;
-		DWORD elem_data_addr;
-		DWORD fffffff; //всегда 0x7fffffff ?
-
-		static UINT Size()
-		{
-			return 4 + 4 + 4;
-		}
-
-		static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
-	};
-
-	struct stElemAddr64
-	{
-		// каждый элемент стал 64 бита
-		ULONGLONG elem_header_addr;
-		ULONGLONG elem_data_addr;
-		ULONGLONG fffffff; //всегда 0xffffffffffffffff ?
-
-		static UINT Size()
-		{
-			return 8 + 8 + 8;
-		}
-
-		static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
-	};
-
-	struct stBlockHeader
-	{
-		char EOL_0D;
-		char EOL_0A;
-		char data_size_hex[8] = {'0', '0', '0', '0', '0', '0', '0', '0'};
-		char space1;
-		char page_size_hex[8] = {'0', '0', '0', '0', '0', '0', '0', '0'};
-		char space2;
-		char next_page_addr_hex[8] = {'7', 'f', 'f', 'f', 'f', 'f', 'f', 'f'};
-		char space3;
-		char EOL2_0D;
-		char EOL2_0A;
-
-		stBlockHeader():
-			EOL_0D(0xd), EOL_0A(0xa),
-			space1(' '), space2(' '), space3(' '),
-			EOL2_0D(0xd), EOL2_0A(0xa)
-			{}
-
-		static stBlockHeader create(uint32_t block_data_size, uint32_t page_size, uint32_t next_page_addr);
-
-		static UINT Size()
-		{
-			return 1 + 1 + 8 + 1 + 8 + 1 + 8 + 1 + 1 + 1;
-		};
-
-		bool IsCorrect() const
-		{
-			return EOL_0D == 0x0d
-				&& EOL_0A == 0x0a
-				&& space1 == 0x20
-				&& space2 == 0x20
-				&& space3 == 0x20
-				&& EOL2_0D == 0x0d
-				&& EOL2_0A == 0x0a;
-		}
-
-		uint32_t data_size() const {
-			return _httoi(data_size_hex);
-		}
-
-		uint32_t page_size() const {
-			return _httoi(page_size_hex);
-		}
-
-		uint32_t next_page_addr() const {
-			return _httoi(next_page_addr_hex);
-		}
-
-		static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
-	};
-
-	struct stBlockHeader64
-	{
-		char EOL_0D;
-		char EOL_0A;
-		char data_size_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
-		char space1;
-		char page_size_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
-		char space2;
-		char next_page_addr_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
-		char space3;
-		char EOL2_0D;
-		char EOL2_0A;
-
-		stBlockHeader64() :
-			EOL_0D(0xd), EOL_0A(0xa),
-			space1(' '), space2(' '), space3(' '),
-			EOL2_0D(0xd), EOL2_0A(0xa)
-		{
-
-		}
-
-		static stBlockHeader64 create(ULONGLONG block_data_size, ULONGLONG page_size, ULONGLONG next_page_addr);
-
-		static UINT Size()
-		{
-			return 1 + 1 + 16 + 1 + 16 + 1 + 16 + 1 + 1 + 1; // 55 теперь
-		};
-
-		bool IsCorrect() const
-		{
-			return EOL_0D == 0x0d
-				&& EOL_0A == 0x0a
-				&& space1 == 0x20
-				&& space2 == 0x20
-				&& space3 == 0x20
-				&& EOL2_0D == 0x0d
-				&& EOL2_0A == 0x0a;
-		}
-
-		uint64_t data_size() const {
-			return _httoi64(data_size_hex);
-		}
-
-		uint64_t page_size() const {
-			return _httoi64(page_size_hex);
-		}
-
-		uint64_t next_page_addr() const {
-			return _httoi64(next_page_addr_hex);
-		}
-
-		static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
-	};
-
-	struct Format15
-	{
-		typedef stFileHeader  file_header_t;
-		typedef stBlockHeader block_header_t;
-		typedef stElemAddr    elem_addr_t;
-
-		static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
-		static const std::streamoff BASE_OFFSET = 0;
-	};
-
-	struct Format16
-	{
-		typedef stFileHeader64  file_header_t;
-		typedef stBlockHeader64 block_header_t;
-		typedef stElemAddr64    elem_addr_t;
-
-		static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
-		static const std::streamoff BASE_OFFSET = 0x1359;
-	};
 
 	int GetData(char **DataBufer, ULONG *DataBuferSize);
 	int Pack();
@@ -290,40 +291,6 @@ public:
 	CV8File(const CV8File &src);
 
 	void Dispose();
-
-	static int PackFromFolder(const std::string &dirname, const std::string &filename);
-	static int BuildCfFile(const std::string &dirname, const std::string &filename, bool dont_deflate = false);
-	static int SaveBlockData(std::basic_ostream<char> &file_out, const char *pBlockData, UINT BlockDataSize, UINT PageSize = 512);
-	static int SaveBlockData(std::basic_ostream<char> &file_out, std::basic_istream<char> &file_in, UINT BlockDataSize, UINT PageSize = 512);
-	static int UnpackToFolder(const std::string &filename, const std::string &dirname, const std::string &block_name, bool print_progress = false);
-
-	static int UnpackToDirectoryNoLoad(
-		const std::string                &directory,
-		      std::basic_istream<char>   &file,
-		const std::vector<std::string>   &filter,
-		      bool                        boolInflate = true,
-		      bool                        UnpackWhenNeed = false
-	);
-
-	static int UnpackToDirectoryNoLoad16(
-		const std::string                &directory,
-		      std::basic_istream<char>   &file,
-		const std::vector<std::string>   &filter,
-		      bool                        boolInflate = true,
-		      bool                        UnpackWhenNeed = false
-	);
-
-	static int Parse(
-		const std::string                &filename,
-		const std::string                &dirname,
-		const std::vector< std::string > &filter
-	);
-
-	static int ListFiles(const std::string &filename);
-	static bool IsV8File(const char *pFileData, ULONG FileDataSize);
-	static bool IsV8File16(const char *pFileData, ULONG FileDataSize);
-	static bool IsV8File(std::basic_istream<char> &file);
-	static bool IsV8File16(std::basic_istream<char>& file);
 
 private:
 	stFileHeader                FileHeader;
@@ -369,6 +336,41 @@ public:
 	bool                NeedUnpack;
 
 };
+
+
+int PackFromFolder(const std::string &dirname, const std::string &filename);
+int BuildCfFile(const std::string &dirname, const std::string &filename, bool dont_deflate = false);
+int SaveBlockData(std::basic_ostream<char> &file_out, const char *pBlockData, UINT BlockDataSize, UINT PageSize = 512);
+int SaveBlockData(std::basic_ostream<char> &file_out, std::basic_istream<char> &file_in, UINT BlockDataSize, UINT PageSize = 512);
+int UnpackToFolder(const std::string &filename, const std::string &dirname, const std::string &block_name, bool print_progress = false);
+
+int UnpackToDirectoryNoLoad(
+		const std::string                &directory,
+		      std::basic_istream<char>   &file,
+		const std::vector<std::string>   &filter,
+		      bool                       boolInflate = true,
+		      bool                       UnpackWhenNeed = false
+);
+
+int UnpackToDirectoryNoLoad16(
+		const std::string                &directory,
+		std::basic_istream<char>   &file,
+		const std::vector<std::string>   &filter,
+		bool                        boolInflate = true,
+		bool                        UnpackWhenNeed = false
+);
+
+int Parse(
+		const std::string                &filename,
+		const std::string                &dirname,
+		const std::vector< std::string > &filter
+);
+
+int ListFiles(const std::string &filename);
+bool IsV8File(const char *pFileData, ULONG FileDataSize);
+bool IsV8File16(const char *pFileData, ULONG FileDataSize);
+bool IsV8File(std::basic_istream<char> &file);
+bool IsV8File16(std::basic_istream<char>& file);
 
 int Deflate(std::istream &source, std::ostream &dest);
 int Inflate(std::istream &source, std::ostream &dest);

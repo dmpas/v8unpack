@@ -5,12 +5,8 @@ was not distributed with this file, You can obtain one
 at http://mozilla.org/MPL/2.0/.
 ----------------------------------------------------------*/
 /////////////////////////////////////////////////////////////////////////////
-//
-//
 //	Author:			disa_da
 //	E-mail:			disa_da2@mail.ru
-//
-//
 /////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -26,8 +22,6 @@ at http://mozilla.org/MPL/2.0/.
 #include <iostream>
 #include <algorithm>
 #include <sstream>
-#include <boost/filesystem.hpp>
-#include <boost/filesystem/fstream.hpp>
 
 using namespace std;
 using namespace v8unpack;
@@ -89,14 +83,13 @@ int deflate(vector<string> &argv)
 
 int unpack(vector<string> &argv)
 {
-	int ret = CV8File::UnpackToFolder(argv[0], argv[1], argv[2], true);
+	int ret = UnpackToFolder(argv[0], argv[1], argv[2], true);
 	return ret;
 }
 
 int pack(vector<string> &argv)
 {
-	CV8File V8File;
-	int ret = V8File.PackFromFolder(argv[0], argv[1]);
+	int ret = PackFromFolder(argv[0], argv[1]);
 	return ret;
 }
 
@@ -114,18 +107,18 @@ int parse(vector<string> &argv)
 		}
 	}
 
-	return CV8File::Parse(argv[0], argv[1], filter);
+	return Parse(argv[0], argv[1], filter);
 }
 
 int list_files(vector<string> &argv)
 {
-	int ret = CV8File::ListFiles(argv[0]);
+	int ret = ListFiles(argv[0]);
 	return ret;
 }
 
 int process_list(vector<string> &argv)
 {
-	if (argv.size() < 1) {
+	if (argv.empty()) {
 		return SHOW_USAGE;
 	}
 
@@ -197,14 +190,14 @@ int example(vector<string> &argv)
 int build(vector<string> &argv)
 {
 	const bool dont_pack = false;
-	int ret = CV8File::BuildCfFile(argv[0], argv[1], dont_pack);
+	int ret = BuildCfFile(argv[0], argv[1], dont_pack);
 	return ret;
 }
 
 int build_nopack(vector<string> &argv)
 {
 	const bool dont_pack = true;
-	int ret = CV8File::BuildCfFile(argv[0], argv[1], dont_pack);
+	int ret = BuildCfFile(argv[0], argv[1], dont_pack);
 	return ret;
 }
 
@@ -298,7 +291,7 @@ void read_param_file(const char *filename, vector< vector<string> > &list)
 
 		while (current_line.size() < 5) {
 			// Дополним пустыми строками, чтобы избежать лишних проверок
-			current_line.push_back("");
+			current_line.emplace_back("");
 		}
 
 		list.push_back(current_line);
@@ -311,7 +304,7 @@ int main(int argc, char* argv[])
 	bool allow_listfile = false;
 	vector<string> args;
 	for (int i = 0; i < argc; i++) {
-		args.push_back(argv[i]);
+		args.emplace_back(argv[i]);
 	}
 	handler_t handler = get_run_mode(args, arg_base, allow_listfile);
 
@@ -344,11 +337,11 @@ int main(int argc, char* argv[])
 	}
 
 	for (int i = arg_base; i < argc; i++) {
-		cli_args.push_back(string(argv[i]));
+		cli_args.emplace_back(string(argv[i]));
 	}
 	while (cli_args.size() < 3) {
 		// Дополним пустыми строками, чтобы избежать лишних проверок
-		cli_args.push_back("");
+		cli_args.emplace_back("");
 	}
 
 	int ret = handler(cli_args);
