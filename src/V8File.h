@@ -33,15 +33,16 @@ at http://mozilla.org/MPL/2.0/.
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 
-#include <assert.h>
+#include <cassert>
 #include <string>
 #include "zlib.h"
 #include <fstream>
 
-#include <stdint.h>
+#include <cstdint>
 #include <vector>
 #include <boost/shared_array.hpp>
 #include <boost/filesystem.hpp>
+#include <algorithm>
 
 namespace v8unpack {
 
@@ -105,6 +106,7 @@ public:
 		{
 			return 4 + 4 + 4 + 4;
 		}
+
 	};
 
 	struct stFileHeader64
@@ -131,6 +133,7 @@ public:
 			return 4 + 4 + 4;
 		}
 
+		static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
 	};
 
 	struct stElemAddr64
@@ -145,6 +148,7 @@ public:
 			return 8 + 8 + 8;
 		}
 
+		static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
 	};
 
 	struct stBlockHeader
@@ -195,6 +199,8 @@ public:
 		uint32_t next_page_addr() const {
 			return _httoi(next_page_addr_hex);
 		}
+
+		static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
 	};
 
 	struct stBlockHeader64
@@ -247,6 +253,28 @@ public:
 		uint64_t next_page_addr() const {
 			return _httoi64(next_page_addr_hex);
 		}
+
+		static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
+	};
+
+	struct Format15
+	{
+		typedef stFileHeader  file_header_t;
+		typedef stBlockHeader block_header_t;
+		typedef stElemAddr    elem_addr_t;
+
+		static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
+		static const std::streamoff BASE_OFFSET = 0;
+	};
+
+	struct Format16
+	{
+		typedef stFileHeader64  file_header_t;
+		typedef stBlockHeader64 block_header_t;
+		typedef stElemAddr64    elem_addr_t;
+
+		static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
+		static const std::streamoff BASE_OFFSET = 0x1359;
 	};
 
 	int GetData(char **DataBufer, ULONG *DataBuferSize);
@@ -268,12 +296,6 @@ public:
 	static int SaveBlockData(std::basic_ostream<char> &file_out, const char *pBlockData, UINT BlockDataSize, UINT PageSize = 512);
 	static int SaveBlockData(std::basic_ostream<char> &file_out, std::basic_istream<char> &file_in, UINT BlockDataSize, UINT PageSize = 512);
 	static int UnpackToFolder(const std::string &filename, const std::string &dirname, const std::string &block_name, bool print_progress = false);
-
-	static int UnpackToFolder16(
-			const std::string &filename,
-			const std::string &dirname,
-			const std::string &block_name,
-			      bool         print_progress = false);
 
 	static int UnpackToDirectoryNoLoad(
 		const std::string                &directory,
@@ -298,17 +320,10 @@ public:
 	);
 
 	static int ListFiles(const std::string &filename);
-	static int SaveBlockDataToBuffer(char** Buffer, const char* pBlockData, UINT BlockDataSize, UINT PageSize = 512);
 	static bool IsV8File(const char *pFileData, ULONG FileDataSize);
 	static bool IsV8File16(const char *pFileData, ULONG FileDataSize);
 	static bool IsV8File(std::basic_istream<char> &file);
 	static bool IsV8File16(std::basic_istream<char>& file);
-	static int ReadBlockData(char *pFileData, stBlockHeader *pBlockHeader, char *&pBlockData, UINT *BlockDataSize = NULL);
-	static int ReadBlockData64(char *pFileData, stBlockHeader64 *pBlockHeader, char *&pBlockData, UINT *BlockDataSize = NULL);
-	static int ReadBlockData(std::basic_istream<char> &file, stBlockHeader *pBlockHeader, char *&pBlockData, UINT *BlockDataSize = NULL);
-	static int ReadBlockData64(std::basic_istream<char> &file, stBlockHeader64 *pBlockHeader, char *&pBlockData, UINT *BlockDataSize = NULL);
-	static int ReadBlockData(std::basic_istream<char> &file, stBlockHeader *pBlockHeader, std::basic_ostream<char> &out, UINT *BlockDataSize = NULL);
-	static int ReadBlockData64(std::basic_istream<char> &file, const stBlockHeader64 &firstBlockHeader, std::basic_ostream<char> &out);
 
 private:
 	stFileHeader                FileHeader;
@@ -363,4 +378,15 @@ int Inflate(const std::string &in_filename, const std::string &out_filename);
 
 int Deflate(const char* in_buf, char** out_buf, ULONG in_len, ULONG* out_len);
 int Inflate(const char* in_buf, char** out_buf, ULONG in_len, ULONG* out_len);
+
+template<typename T>
+void full_copy(std::basic_istream<T> &in_file, std::basic_ostream<T> &out_file)
+{
+	std::copy(
+			std::istreambuf_iterator<T>(in_file),
+			std::istreambuf_iterator<T>(),
+			std::ostreambuf_iterator<T>(out_file)
+	);
+}
+
 } // namespace v8unpack

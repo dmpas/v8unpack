@@ -38,54 +38,6 @@ at http://mozilla.org/MPL/2.0/.
 using namespace std;
 namespace v8unpack {
 
-
-template<typename T>
-void full_copy(basic_istream<T> &in_file, basic_ostream<T> &out_file)
-{
-	copy(
-			istreambuf_iterator<T>(in_file),
-			istreambuf_iterator<T>(),
-			ostreambuf_iterator<T>(out_file)
-	);
-}
-
-template<typename T>
-void hex_to_int(const char *hextext, int length, T &value)
-{
-	for (auto s = hextext;
-		length && *s != '\0' && *s != ' ';
-		length--, s++) {
-
-		auto lower_s = tolower(*s);
-		if (lower_s >= '0' && lower_s <= '9') {
-			value <<= 4;
-			value += lower_s - '0';
-		}
-		else if (lower_s >= 'a' && lower_s <= 'f') {
-			value <<= 4;
-			value += lower_s - 'a' + 10;
-		}
-		else
-			break;
-	}
-}
-
-DWORD _httoi(const char *value)
-{
-	DWORD result = 0;
-	hex_to_int(value, 8, result);
-	return result;
-}
-
-ULONGLONG _httoi64(const char *value)
-{
-	ULONGLONG result = 0;
-	hex_to_int(value, 16, result);
-	return result;
-}
-
-
-
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -133,335 +85,207 @@ CV8Elem::~CV8Elem()
 }
 
 
-int Inflate(const std::string &in_filename, const std::string &out_filename)
+template<typename format>
+static int ReadBlockData(char *pFileData, typename format::block_header_t *pBlockHeader, char *&pBlockData, UINT *BlockDataSize)
 {
-    int ret;
+	DWORD data_size;
+	UINT read_in_bytes;
 
-	std::shared_ptr<std::istream> input;
-
-	if (in_filename == "-") {
-
-		// считываем стандартный ввод
-		input.reset(&std::cin, [](...){});
-
-	} else {
-
-		boost::filesystem::path inf(in_filename);
-		input.reset(new boost::filesystem::ifstream(inf, std::ios_base::binary));
-
-		if (!*input) {
-			return V8UNPACK_DEFLATE_IN_FILE_NOT_FOUND;
+	if (pBlockHeader != nullptr) {
+		data_size = pBlockHeader->data_size();
+		pBlockData = new char[data_size];
+		if (!pBlockData) {
+			std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
+			return -1;
 		}
+	} else
+		data_size = 0;
 
+	read_in_bytes = 0;
+	while (read_in_bytes < data_size) {
+
+		auto page_size = pBlockHeader->page_size();
+		auto next_page_addr = pBlockHeader->next_page_addr();
+
+		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
+
+		memcpy(&pBlockData[read_in_bytes], (char*)(&pBlockHeader[1]), bytes_to_read);
+
+		read_in_bytes += bytes_to_read;
+
+		if (next_page_addr != format::UNDEFINED_VALUE) // есть следующая страница
+			pBlockHeader = (typename format::block_header_t*) &pFileData[next_page_addr + format::BASE_OFFSET];
+		else
+			break;
 	}
 
-	std::shared_ptr<std::ostream> output;
+	if (BlockDataSize)
+		*BlockDataSize = data_size;
 
-	if (out_filename == "-") {
+	return 0;
+}
 
-		// Выводим в стандартный вывод
-		output.reset(&std::cout, [](...){});
+template<typename format>
+static int ReadBlockData(std::basic_istream<char> &file, typename format::block_header_t *pBlockHeader, char *&pBlockData, UINT *BlockDataSize)
+{
+	ULONGLONG data_size;
+	UINT read_in_bytes;
 
-	} else {
-
-		boost::filesystem::path ouf(out_filename);
-		output.reset(new boost::filesystem::ofstream (ouf, std::ios_base::binary));
-
-		if (!*output) {
-			return V8UNPACK_INFLATE_OUT_FILE_NOT_CREATED;
+	typename format::block_header_t Header;
+	if (pBlockHeader != nullptr) {
+		data_size = pBlockHeader->data_size();
+		pBlockData = new char[data_size];
+		if (!pBlockData) {
+			std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
+			return -1;
 		}
+		Header = *pBlockHeader;
+		pBlockHeader = &Header;
+	}
+	else
+		data_size = 0;
+
+	read_in_bytes = 0;
+	while (read_in_bytes < data_size) {
+
+		auto page_size = pBlockHeader->page_size();
+		auto next_page_addr = pBlockHeader->next_page_addr();
+
+		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
+
+		file.read(&pBlockData[read_in_bytes], bytes_to_read);
+
+		read_in_bytes += bytes_to_read;
+
+		if (next_page_addr != format::UNDEFINED_VALUE) { // есть следующая страница
+			file.seekg(next_page_addr + format::BASE_OFFSET, std::ios_base::beg);
+			file.read((char*)&Header, sizeof(Header));
+		}
+		else
+			break;
 	}
 
-    ret = Inflate(*input, *output);
+	if (BlockDataSize)
+		*BlockDataSize = data_size;
 
-    if (ret == Z_DATA_ERROR)
-        return V8UNPACK_INFLATE_DATAERROR;
-    if (ret)
-        return V8UNPACK_INFLATE_ERROR;
-
-    return 0;
+	return 0;
 }
 
-int Deflate(const std::string &in_filename, const std::string &out_filename)
+template<typename format>
+static int ReadBlockData(std::basic_istream<char> &file, typename format::block_header_t *pBlockHeader, std::basic_ostream<char> &out, UINT *BlockDataSize)
 {
-    int ret;
+	DWORD data_size;
+	UINT read_in_bytes;
 
-	std::shared_ptr<std::istream> input;
+	typename format::block_header_t Header;
+	if (pBlockHeader != nullptr) {
+		data_size = pBlockHeader->data_size();
+		Header = *pBlockHeader;
+		pBlockHeader = &Header;
+	} else
+		data_size = 0;
 
-	if (in_filename == "-") {
+	read_in_bytes = 0;
+	while (read_in_bytes < data_size) {
 
-		// считываем стандартный ввод
-		input.reset(&std::cin, [](...){});
+		auto page_size = pBlockHeader->page_size();
+		auto next_page_addr = pBlockHeader->next_page_addr();
 
-	} else {
+		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
 
-		boost::filesystem::path inf(in_filename);
-		input.reset(new boost::filesystem::ifstream(inf, std::ios_base::binary));
+		const int buf_size = 1024; // TODO: Настраиваемый размер буфера
+		char *pBlockData = new char [buf_size];
+		UINT read_done = 0;
 
-		if (!*input) {
-			return V8UNPACK_DEFLATE_IN_FILE_NOT_FOUND;
+		while (read_done < bytes_to_read) {
+			file.read(pBlockData, MIN(buf_size, bytes_to_read - read_done));
+			int rd = file.gcount();
+			out.write(pBlockData, rd);
+			read_done += rd;
 		}
 
+		delete [] pBlockData;
+
+		read_in_bytes += bytes_to_read;
+
+		if (next_page_addr != format::UNDEFINED_VALUE) { // есть следующая страница
+			file.seekg(next_page_addr + format::BASE_OFFSET, std::ios_base::beg);
+			file.read((char*)&Header, sizeof(Header));
+		} else
+			break;
 	}
 
-	std::shared_ptr<std::ostream> output;
+	if (BlockDataSize)
+		*BlockDataSize = data_size;
 
-	if (out_filename == "-") {
+	return 0;
+}
 
-		// Выводим в стандартый вывод
-		output.reset(&std::cout, [](...){});
+template<typename format>
+static int ReadBlockData(std::basic_istream<char> &file, const typename format::block_header_t &firstBlockHeader, std::basic_ostream<char> &out)
+{
+	UINT read_in_bytes;
 
-	} else {
+	auto data_size = firstBlockHeader.data_size();
+	auto Header = firstBlockHeader;
+	auto pBlockHeader = &Header;
 
-		boost::filesystem::path ouf(out_filename);
-		output.reset(new boost::filesystem::ofstream (ouf, std::ios_base::binary));
+	read_in_bytes = 0;
+	while (read_in_bytes < data_size) {
 
-		if (!*output) {
-			return V8UNPACK_INFLATE_OUT_FILE_NOT_CREATED;
+		auto page_size = pBlockHeader->page_size();
+		auto next_page_addr = pBlockHeader->next_page_addr();
+
+		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
+
+		const int buf_size = 1024; // TODO: Настраиваемый размер буфера
+		char *pBlockData = new char[buf_size];
+		UINT read_done = 0;
+
+		while (read_done < bytes_to_read) {
+			file.read(pBlockData, MIN(buf_size, bytes_to_read - read_done));
+			UINT rd = file.gcount();
+			out.write(pBlockData, rd);
+			read_done += rd;
 		}
+
+		delete[] pBlockData;
+
+		read_in_bytes += bytes_to_read;
+
+		if (next_page_addr != format::UNDEFINED_VALUE) { // есть следующая страница
+			file.seekg(next_page_addr + format::BASE_OFFSET, std::ios_base::beg);
+			file.read((char*)&Header, sizeof(Header));
+		}
+		else
+			break;
 	}
 
-    ret = Deflate(*input, *output);
-
-    if (ret)
-        return V8UNPACK_DEFLATE_ERROR;
-
-    return 0;
+	return 0;
 }
 
-int Deflate(std::istream &source, std::ostream &dest)
+
+template<typename format>
+static int SaveBlockDataToBuffer(char **cur_pos, const char *pBlockData, UINT BlockDataSize, UINT PageSize = 0)
 {
+	if (PageSize < BlockDataSize)
+		PageSize = BlockDataSize;
 
-    int ret, flush;
-    unsigned have;
-    z_stream strm;
-    unsigned char in[CHUNK];
-    unsigned char out[CHUNK];
+	typename format::block_header_t CurBlockHeader = format::block_header_t::create(BlockDataSize, PageSize, format::UNDEFINED_VALUE);
+	memcpy(*cur_pos, (char*)&CurBlockHeader, format::block_header_t::Size());
+	*cur_pos += format::block_header_t::Size();
 
-    // allocate deflate state
-    strm.zalloc = Z_NULL;
-    strm.zfree = Z_NULL;
-    strm.opaque = Z_NULL;
+	memcpy(*cur_pos, pBlockData, BlockDataSize);
+	*cur_pos += BlockDataSize;
 
-    ret = deflateInit2(&strm, Z_BEST_COMPRESSION, Z_DEFLATED, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY);
+	for(UINT i = 0; i < PageSize - BlockDataSize; i++) {
+		**cur_pos = 0;
+		++*cur_pos;
+	}
 
-    if (ret != Z_OK)
-        return ret;
-
-    // compress until end of file
-    do {
-        strm.avail_in = source.read(reinterpret_cast<char *>(in), CHUNK).gcount();
-        if (source.bad()) {
-            (void)deflateEnd(&strm);
-            return Z_ERRNO;
-        }
-
-        flush = source.eof() ? Z_FINISH : Z_NO_FLUSH;
-        strm.next_in = in;
-
-        // run deflate() on input until output buffer not full, finish
-        //   compression if all of source has been read in
-        do {
-            strm.avail_out = CHUNK;
-            strm.next_out = out;
-            ret = deflate(&strm, flush);    // no bad return value
-            assert(ret != Z_STREAM_ERROR);  // state not clobbered
-            have = CHUNK - strm.avail_out;
-
-            dest.write(reinterpret_cast<char *>(out), have);
-
-            if (dest.bad()) {
-                (void)deflateEnd(&strm);
-                return Z_ERRNO;
-            }
-        } while (strm.avail_out == 0);
-        assert(strm.avail_in == 0);     // all input will be used
-
-        // done when last data in file processed
-    } while (flush != Z_FINISH);
-    assert(ret == Z_STREAM_END);        // stream will be complete
-
-    // clean up and return
-    (void)deflateEnd(&strm);
-    return Z_OK;
-
-}
-int Inflate(std::istream &source, std::ostream &dest)
-{
-    int ret;
-    unsigned have;
-    z_stream strm;
-    unsigned char in[CHUNK];
-    unsigned char out[CHUNK];
-
-    // allocate inflate state
-    strm.zalloc = Z_NULL;
-    strm.zfree = Z_NULL;
-    strm.opaque = Z_NULL;
-    strm.avail_in = 0;
-    strm.next_in = Z_NULL;
-
-    ret = inflateInit2(&strm, -MAX_WBITS);
-    if (ret != Z_OK)
-        return ret;
-
-    do {
-        strm.avail_in = source.read(reinterpret_cast<char *>(in), CHUNK).gcount();
-        if (source.bad()) {
-            (void)inflateEnd(&strm);
-            return Z_ERRNO;
-        }
-        if (strm.avail_in == 0)
-            break;
-
-        strm.next_in = in;
-
-        // run inflate() on input until output buffer not full
-        do {
-            strm.avail_out = CHUNK;
-            strm.next_out = out;
-            ret = inflate(&strm, Z_NO_FLUSH);
-            assert(ret != Z_STREAM_ERROR);  // state not clobbered
-            switch (ret) {
-            case Z_NEED_DICT:
-                ret = Z_DATA_ERROR;     // and fall through
-            case Z_DATA_ERROR:
-            case Z_MEM_ERROR:
-                (void)inflateEnd(&strm);
-                return ret;
-            }
-            have = CHUNK - strm.avail_out;
-            dest.write(reinterpret_cast<char *>(out), have);
-            if (dest.bad()) {
-                (void)inflateEnd(&strm);
-                return Z_ERRNO;
-            }
-        } while (strm.avail_out == 0);
-
-        // done when inflate() says it's done
-    } while (ret != Z_STREAM_END);
-
-    // clean up and return
-    (void)inflateEnd(&strm);
-    return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+	return 0;
 }
 
-
-int Inflate(const char* in_buf, char** out_buf, ULONG in_len, ULONG* out_len)
-{
-    int ret;
-    unsigned have;
-    z_stream strm;
-    unsigned char out[CHUNK];
-
-    unsigned long out_buf_len = in_len + CHUNK;
-    *out_buf = static_cast<char*> (realloc(*out_buf, out_buf_len));
-    *out_len = 0;
-
-
-    // allocate inflate state
-    strm.zalloc = Z_NULL;
-    strm.zfree = Z_NULL;
-    strm.opaque = Z_NULL;
-    strm.avail_in = 0;
-    strm.next_in = Z_NULL;
-    ret = inflateInit2(&strm, -MAX_WBITS);
-    if (ret != Z_OK)
-        return ret;
-
-    strm.avail_in = in_len;
-    strm.next_in = (unsigned char *)(in_buf);
-
-    // run inflate() on input until output buffer not full
-    do {
-        strm.avail_out = CHUNK;
-        strm.next_out = out;
-        ret = inflate(&strm, Z_NO_FLUSH);
-        assert(ret != Z_STREAM_ERROR);  // state not clobbered
-        switch (ret) {
-        case Z_NEED_DICT:
-            ret = Z_DATA_ERROR;     // and fall through
-        case Z_DATA_ERROR:
-        case Z_MEM_ERROR:
-            (void)inflateEnd(&strm);
-            return ret;
-        }
-        have = CHUNK - strm.avail_out;
-        if (*out_len + have > out_buf_len) {
-            //if (have < sizeof
-            out_buf_len = out_buf_len + sizeof(out);
-            *out_buf = static_cast<char*> (realloc(*out_buf, out_buf_len));
-            if (!out_buf) {
-                (void)deflateEnd(&strm);
-                return Z_ERRNO;
-            }
-        }
-        memcpy((*out_buf + *out_len), out, have);
-        *out_len += have;
-    } while (strm.avail_out == 0);
-
-    // done when inflate() says it's done
-
-    // clean up and return
-    (void)inflateEnd(&strm);
-    return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
-}
-
-int Deflate(const char* in_buf, char** out_buf, ULONG in_len, ULONG* out_len)
-{
-    int ret, flush;
-    unsigned have;
-    z_stream strm;
-    unsigned char out[CHUNK];
-
-    unsigned long out_buf_len = in_len + CHUNK;
-    *out_buf = static_cast<char*> (realloc(*out_buf, out_buf_len));
-    *out_len = 0;
-
-    // allocate deflate state
-    strm.zalloc = Z_NULL;
-    strm.zfree = Z_NULL;
-    strm.opaque = Z_NULL;
-    ret = deflateInit2(&strm, Z_BEST_COMPRESSION, Z_DEFLATED, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY);
-
-    if (ret != Z_OK)
-        return ret;
-
-
-    flush = Z_FINISH;
-    strm.next_in = (unsigned char *)(in_buf);
-    strm.avail_in = in_len;
-
-    // run deflate() on input until output buffer not full, finish
-    //   compression if all of source has been read in
-    do {
-        strm.avail_out = sizeof(out);
-        strm.next_out = out;
-        ret = deflate(&strm, flush);    // no bad return value
-        assert(ret != Z_STREAM_ERROR);  // state not clobbered
-        have = sizeof(out) - strm.avail_out;
-        if (*out_len + have > out_buf_len) {
-            //if (have < sizeof
-            out_buf_len = out_buf_len + sizeof(out);
-            *out_buf = static_cast<char*> (realloc(*out_buf, out_buf_len));
-            if (!out_buf) {
-                (void)deflateEnd(&strm);
-                return Z_ERRNO;
-            }
-        }
-        memcpy((*out_buf + *out_len), out, have);
-        *out_len += have;
-    } while (strm.avail_out == 0);
-    assert(strm.avail_in == 0);     // all input will be used
-
-    assert(ret == Z_STREAM_END);        // stream will be complete
-
-
-    // clean up and return
-    (void)deflateEnd(&strm);
-    return Z_OK;
-
-}
 
 int CV8File::LoadFile(char *pFileData, ULONG FileDataSize, bool boolInflate, bool UnpackWhenNeed)
 {
@@ -475,34 +299,38 @@ int CV8File::LoadFile(char *pFileData, ULONG FileDataSize, bool boolInflate, boo
         return V8UNPACK_NOT_V8_FILE;
     }
 
+	typedef stFileHeader file_header_t;
+	typedef stBlockHeader block_header_t;
+	typedef stElemAddr elem_addr_t;
+
     char *InflateBuffer = nullptr;
     ULONG InflateSize = 0;
 
-    stFileHeader *pFileHeader = (stFileHeader*) pFileData;
+	auto *pFileHeader = (file_header_t*) pFileData;
 
-    stBlockHeader *pBlockHeader;
+	block_header_t *pBlockHeader;
 
-    pBlockHeader = (stBlockHeader*) &pFileHeader[1];
-    memcpy(&FileHeader, pFileData, stFileHeader::Size());
+    pBlockHeader = (block_header_t*) &pFileHeader[1];
+    memcpy(&FileHeader, pFileData, file_header_t::Size());
 
 
     UINT ElemsAddrsSize;
-    stElemAddr *pElemsAddrs = nullptr;
-    ReadBlockData(pFileData, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+	elem_addr_t *pElemsAddrs = nullptr;
+    ReadBlockData<Format15>(pFileData, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
 
 
-    unsigned int ElemsNum = ElemsAddrsSize / stElemAddr::Size();
+    unsigned int ElemsNum = ElemsAddrsSize / elem_addr_t::Size();
 
     Elems.clear();
 
     for (UINT i = 0; i < ElemsNum; i++) {
 
-        if (pElemsAddrs[i].fffffff != V8_FF_SIGNATURE) {
+        if (pElemsAddrs[i].fffffff != elem_addr_t::UNDEFINED_VALUE) {
             ElemsNum = i;
             break;
         }
 
-        pBlockHeader = (stBlockHeader*) &pFileData[pElemsAddrs[i].elem_header_addr];
+        pBlockHeader = (block_header_t*) &pFileData[pElemsAddrs[i].elem_header_addr];
 
         if (!pBlockHeader->IsCorrect()) {
             ret = V8UNPACK_HEADER_ELEM_NOT_CORRECT;
@@ -510,14 +338,14 @@ int CV8File::LoadFile(char *pFileData, ULONG FileDataSize, bool boolInflate, boo
         }
 
         CV8Elem elem;
-        ReadBlockData(pFileData, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+        ReadBlockData<Format15>(pFileData, pBlockHeader, elem.pHeader, &elem.HeaderSize);
 
         //080228 Блока данных может не быть, тогда адрес блока данных равен 0x7fffffff
-        if (pElemsAddrs[i].elem_data_addr != V8_FF_SIGNATURE) {
-            pBlockHeader = (stBlockHeader*) &pFileData[pElemsAddrs[i].elem_data_addr];
-            ReadBlockData(pFileData, pBlockHeader, elem.pData, &elem.DataSize);
+        if (pElemsAddrs[i].elem_data_addr != elem_addr_t::UNDEFINED_VALUE) {
+            pBlockHeader = (block_header_t*) &pFileData[pElemsAddrs[i].elem_data_addr];
+			ReadBlockData<Format15>(pFileData, pBlockHeader, elem.pData, &elem.DataSize);
         } else
-            ReadBlockData(pFileData, nullptr, elem.pData, &elem.DataSize);
+			ReadBlockData<Format15>(pFileData, nullptr, elem.pData, &elem.DataSize);
 
         elem.UnpackedData.IsDataPacked = false;
 
@@ -586,127 +414,11 @@ const size_t SmartUnpackedLimit = 20 *1024*1024;
 	В дальнейшем этот показатель всё же будет вынесен в параметр командной строки
 */
 
+template<typename format>
 int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesystem::path &elem_path)
 {
-    CV8File::stBlockHeader header;
-    file.read((char*)&header, sizeof(header));
 
-    int ret = 0;
-
-    size_t data_size = header.data_size();
-    if (!NeedUnpack || data_size > SmartLimit) {
-        /* 1) Имѣем дѣло с условно большими данными - работаем через промежуточный файл */
-        /* 2) Не нужна распаковка - пишем прямо в файл-приёмник */
-
-        boost::filesystem::ifstream src;
-
-        boost::filesystem::path tmp_path = elem_path.parent_path() / ".v8unpack.tmp";
-        boost::filesystem::path inf_path = elem_path.parent_path() / ".v8unpack.inf";
-        boost::filesystem::path src_path;
-
-        if (NeedUnpack) {
-            /* Временный файл */
-
-            boost::filesystem::ofstream out;
-
-            out.open(tmp_path, std::ios_base::binary);
-            UINT BlockDataSize = 0;
-            CV8File::ReadBlockData(file, &header, out, &BlockDataSize);
-            out.close();
-
-            out.open(inf_path, std::ios_base::binary);
-            boost::filesystem::ifstream inf(tmp_path, std::ios_base::binary);
-
-            ret = Inflate(inf, out);
-
-            if (ret) {
-                // Файл не распаковывается - записываем, как есть
-				inf.seekg(0, std::ios_base::beg);
-				full_copy(inf, out);
-            }
-
-            inf.close();
-            boost::filesystem::remove(tmp_path);
-            out.close();
-
-            src_path = inf_path;
-
-        } else {
-            /* Конечный файл */
-            boost::filesystem::ofstream out;
-            out.open(tmp_path, std::ios_base::binary);
-            UINT BlockDataSize = 0;
-            CV8File::ReadBlockData(file, &header, out, &BlockDataSize);
-            out.close();
-
-            src_path = tmp_path;
-        }
-
-        src.open(src_path, std::ios_base::binary);
-
-        if (CV8File::IsV8File(src)) {
-			vector<string> empty_filter;
-			CV8File::UnpackToDirectoryNoLoad(elem_path.string(), src, empty_filter, false, false);
-            src.close();
-            boost::filesystem::remove(src_path);
-        } else {
-            src.close();
-            boost::system::error_code error;
-            boost::filesystem::rename(src_path, elem_path, error);
-        }
-
-
-    } else {
-
-        /* Имѣем полное право помѣстить файл в память */
-
-        UINT uDataSize;
-        char *source_data = nullptr;
-
-        CV8File::ReadBlockData(file, &header, source_data, &uDataSize);
-
-        char *out_data = nullptr;
-        ULONG out_data_size = 0;
-
-        ret = Inflate(source_data, &out_data, uDataSize, &out_data_size);
-        if (ret) {
-
-            // файл не распаковывается - записываем, как есть
-            out_data = source_data;
-            out_data_size = uDataSize;
-
-            source_data = nullptr;
-        }
-
-        delete [] source_data;
-
-        if (CV8File::IsV8File(out_data, uDataSize)) {
-            /* Это 8-файл - раскладываем его*/
-
-            CV8File elem;
-            elem.LoadFile(out_data, out_data_size, false, false);
-            elem.SaveFileToFolder(elem_path.string());
-
-            elem.Dispose();
-
-        } else {
-            /* Тупо пишем содержимое в цѣлевой файл*/
-
-            boost::filesystem::ofstream out(elem_path, std::ios_base::binary);
-            out.write(out_data, out_data_size);
-
-        }
-
-		free(out_data);
-
-    }
-
-    return ret;
-}
-
-int SmartUnpack64(std::basic_istream<char> &file, bool NeedUnpack, boost::filesystem::path &elem_path)
-{
-	CV8File::stBlockHeader64 header;
+	typename format::block_header_t header;
 	file.read((char*)&header, header.Size());
 
 	int ret = 0;
@@ -728,7 +440,7 @@ int SmartUnpack64(std::basic_istream<char> &file, bool NeedUnpack, boost::filesy
 			boost::filesystem::ofstream out;
 
 			out.open(tmp_path, std::ios_base::binary);
-			CV8File::ReadBlockData64(file, header, out);
+			ReadBlockData<format>(file, header, out);
 			out.close();
 
 			out.open(inf_path, std::ios_base::binary);
@@ -753,7 +465,7 @@ int SmartUnpack64(std::basic_istream<char> &file, bool NeedUnpack, boost::filesy
 			/* Конечный файл */
 			boost::filesystem::ofstream out;
 			out.open(tmp_path, std::ios_base::binary);
-			CV8File::ReadBlockData64(file, header, out);
+			ReadBlockData<format>(file, header, out);
 			out.close();
 
 			src_path = tmp_path;
@@ -787,7 +499,7 @@ int SmartUnpack64(std::basic_istream<char> &file, bool NeedUnpack, boost::filesy
 		UINT uDataSize;
 		char *source_data = nullptr;
 
-		CV8File::ReadBlockData64(file, &header, source_data, &uDataSize);
+		ReadBlockData<format>(file, &header, source_data, &uDataSize);
 
 		char *out_data = nullptr;
 		ULONG out_data_size = 0;
@@ -804,17 +516,22 @@ int SmartUnpack64(std::basic_istream<char> &file, bool NeedUnpack, boost::filesy
 
 		delete[] source_data;
 
+
+		bool unpacked_as_V8 = false;
+
 		if (CV8File::IsV8File(out_data, uDataSize)) {
 			/* Это 8-файл - раскладываем его*/
 
 			CV8File elem;
-			elem.LoadFile(out_data, out_data_size, false, false);
-			elem.SaveFileToFolder(elem_path.string());
+			auto unpack_result = elem.LoadFile(out_data, out_data_size, false, false);
 
-			elem.Dispose();
-
+			if (unpack_result == 0) {
+				elem.SaveFileToFolder(elem_path.string());
+				elem.Dispose();
+				unpacked_as_V8 = true;
+			}
 		}
-		else {
+		if (!unpacked_as_V8) {
 			/* Тупо пишем содержимое в цѣлевой файл*/
 
 			boost::filesystem::ofstream out(elem_path, std::ios_base::binary);
@@ -859,23 +576,25 @@ int CV8File::UnpackToDirectoryNoLoad(const string &directory, basic_istream<char
         }
     }
 
-    stFileHeader FileHeader;
+	typedef Format15 format;
+
+	format::file_header_t FileHeader;
     file.read((char*)&FileHeader, sizeof(FileHeader));
 
-    stBlockHeader BlockHeader;
-    stBlockHeader *pBlockHeader = &BlockHeader;
+	format::block_header_t BlockHeader;
+	format::block_header_t *pBlockHeader = &BlockHeader;
 
     file.read((char*)&BlockHeader, sizeof(BlockHeader));
 
     UINT ElemsAddrsSize;
-    stElemAddr *pElemsAddrs = nullptr;
-    ReadBlockData(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+	format::elem_addr_t *pElemsAddrs = nullptr;
+    ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
 
-    unsigned int ElemsNum = ElemsAddrsSize / stElemAddr::Size();
+    unsigned int ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
 
     for (UINT i = 0; i < ElemsNum; i++) {
 
-        if (pElemsAddrs[i].fffffff != V8_FF_SIGNATURE) {
+        if (pElemsAddrs[i].fffffff != format::UNDEFINED_VALUE) {
             ElemsNum = i;
             break;
         }
@@ -889,7 +608,7 @@ int CV8File::UnpackToDirectoryNoLoad(const string &directory, basic_istream<char
         }
 
         CV8Elem elem;
-        ReadBlockData(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+        ReadBlockData<format>(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
 
         string ElemName = elem.GetName();
 
@@ -901,12 +620,9 @@ int CV8File::UnpackToDirectoryNoLoad(const string &directory, basic_istream<char
         elem_path = boost::filesystem::absolute(elem_path);
 
         //080228 Блока данных может не быть, тогда адрес блока данных равен 0x7fffffff
-        if (pElemsAddrs[i].elem_data_addr != V8_FF_SIGNATURE) {
+        if (pElemsAddrs[i].elem_data_addr != format::UNDEFINED_VALUE) {
             file.seekg(pElemsAddrs[i].elem_data_addr, std::ios_base::beg);
-            SmartUnpack(file, boolInflate/* && IsDataPacked*/, elem_path);
-        } else {
-            // TODO: Зачем это нужно??
-            //ReadBlockData(file, nullptr, o_tmp, &elem.DataSize);
+            SmartUnpack<format>(file, boolInflate/* && IsDataPacked*/, elem_path);
         }
 
 		delete [] elem.pHeader;
@@ -935,32 +651,34 @@ int CV8File::UnpackToDirectoryNoLoad16(const string& directory, basic_istream<ch
 		}
 	}
 
-	stFileHeader64 FileHeader;
+	typedef Format16 format;
 
-	std::ifstream::pos_type offset = V8_OFFSET_8316;
+	format::file_header_t FileHeader;
+
+	std::ifstream::pos_type offset = format::BASE_OFFSET;
 	file.seekg(offset);
 
 	file.read((char*)& FileHeader, FileHeader.Size());
 
-	stBlockHeader64 BlockHeader;
-	stBlockHeader64* pBlockHeader = &BlockHeader;
+	format::block_header_t BlockHeader;
+	format::block_header_t* pBlockHeader = &BlockHeader;
 
 	file.read((char*)& BlockHeader, BlockHeader.Size());
 
 	UINT ElemsAddrsSize;
-	stElemAddr64* pElemsAddrs = nullptr;
-	ReadBlockData64(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+	format::elem_addr_t* pElemsAddrs = nullptr;
+	ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
 
-	unsigned int ElemsNum = ElemsAddrsSize / stElemAddr::Size();
+	unsigned int ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
 
 	for (UINT i = 0; i < ElemsNum; i++) {
 
-		if (pElemsAddrs[i].fffffff != V8_FF64_SIGNATURE) {
+		if (pElemsAddrs[i].fffffff != format::UNDEFINED_VALUE) {
 			ElemsNum = i;
 			break;
 		}
 
-		file.seekg(pElemsAddrs[i].elem_header_addr + V8_OFFSET_8316, std::ios_base::beg);
+		file.seekg(pElemsAddrs[i].elem_header_addr + format::BASE_OFFSET, std::ios_base::beg);
 		file.read((char*)& BlockHeader, sizeof(BlockHeader));
 
 		if (!pBlockHeader->IsCorrect()) {
@@ -969,7 +687,7 @@ int CV8File::UnpackToDirectoryNoLoad16(const string& directory, basic_istream<ch
 		}
 
 		CV8Elem elem;
-		ReadBlockData64(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+		ReadBlockData<format>(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
 
 		string ElemName = elem.GetName();
 
@@ -982,9 +700,9 @@ int CV8File::UnpackToDirectoryNoLoad16(const string& directory, basic_istream<ch
 
 
 		//080228 Блока данных может не быть, тогда адрес блока данных равен 0xffffffffffffffff
-		if (pElemsAddrs[i].elem_data_addr != V8_FF64_SIGNATURE) {
-			file.seekg(pElemsAddrs[i].elem_data_addr + V8_OFFSET_8316, std::ios_base::beg);
-			SmartUnpack64(file, boolInflate /* && IsDataPacked*/, elem_path);
+		if (pElemsAddrs[i].elem_data_addr != format::UNDEFINED_VALUE) {
+			file.seekg(pElemsAddrs[i].elem_data_addr + format::BASE_OFFSET, std::ios_base::beg);
+			SmartUnpack<format>(file, boolInflate /* && IsDataPacked*/, elem_path);
 		}
 
 		delete[] elem.pHeader;
@@ -996,10 +714,51 @@ int CV8File::UnpackToDirectoryNoLoad16(const string& directory, basic_istream<ch
 	return ret;
 }
 
+template<typename format>
+static int list_files(boost::filesystem::ifstream &file)
+{
+	typename format::file_header_t FileHeader;
+
+	file.seekg(format::BASE_OFFSET);
+	file.read((char*)&FileHeader, FileHeader.Size());
+
+	typename format::block_header_t BlockHeader;
+	auto *pBlockHeader = &BlockHeader;
+
+	file.read((char*)&BlockHeader, BlockHeader.Size());
+
+	UINT ElemsAddrsSize;
+	typename format::elem_addr_t *pElemsAddrs = nullptr;
+	ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+
+	unsigned int ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
+
+	for (UINT i = 0; i < ElemsNum; i++) {
+		if (pElemsAddrs[i].fffffff != format::UNDEFINED_VALUE) {
+			ElemsNum = i;
+			break;
+		}
+
+		file.seekg(pElemsAddrs[i].elem_header_addr + format::BASE_OFFSET, std::ios_base::beg);
+		file.read((char*)&BlockHeader, BlockHeader.Size());
+
+		if (!pBlockHeader->IsCorrect()) {
+			continue;
+		}
+
+		CV8Elem elem;
+		ReadBlockData<format>(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+
+		string ElemName = elem.GetName();
+
+		std::cout << ElemName << std::endl;
+	}
+
+	return 0;
+}
 
 int CV8File::ListFiles(const std::string &filename)
 {
-
 	boost::filesystem::ifstream file(filename, std::ios_base::binary);
 
 	if (!file) {
@@ -1011,50 +770,17 @@ int CV8File::ListFiles(const std::string &filename)
 		return V8UNPACK_NOT_V8_FILE;
 	}
 
-	stFileHeader FileHeader;
-	file.read((char*)&FileHeader, sizeof(FileHeader));
-
-	stBlockHeader BlockHeader;
-	stBlockHeader *pBlockHeader = &BlockHeader;
-
-	file.read((char*)&BlockHeader, sizeof(BlockHeader));
-
-	UINT ElemsAddrsSize;
-	stElemAddr *pElemsAddrs = nullptr;
-	ReadBlockData(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
-
-	unsigned int ElemsNum = ElemsAddrsSize / stElemAddr::Size();
-
-	for (UINT i = 0; i < ElemsNum; i++) {
-
-		if (pElemsAddrs[i].fffffff != V8_FF_SIGNATURE) {
-			ElemsNum = i;
-			break;
-		}
-
-		file.seekg(pElemsAddrs[i].elem_header_addr, std::ios_base::beg);
-		file.read((char*)&BlockHeader, sizeof(BlockHeader));
-
-		if (!pBlockHeader->IsCorrect()) {
-			continue;
-		}
-
-		CV8Elem elem;
-		ReadBlockData(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
-
-		string ElemName = elem.GetName();
-
-		std::cout << ElemName << std::endl;
+	if (IsV8File16(file)) {
+		return list_files<Format16>(file);
 	}
 
-	return 0;
+	return list_files<Format15>(file);
 }
 
-int CV8File::UnpackToFolder16(const std::string &filename_in, const std::string &dirname, const std::string &UnpackElemWithName, bool print_progress)
+template<typename format>
+static int unpack_to_folder(boost::filesystem::ifstream &file, const std::string &dirname, const std::string &UnpackElemWithName, bool print_progress)
 {
 	int ret = 0;
-
-	boost::filesystem::ifstream file(filename_in, std::ios_base::binary);
 
 	boost::filesystem::path p_dir(dirname);
 
@@ -1065,9 +791,9 @@ int CV8File::UnpackToFolder16(const std::string &filename_in, const std::string 
 		}
 	}
 
-	stFileHeader64 FileHeader;
+	typename format::file_header_t FileHeader;
 
-	std::ifstream::pos_type offset = V8_OFFSET_8316;
+	std::ifstream::pos_type offset = format::BASE_OFFSET;
 	file.seekg(offset);
 	file.read((char*)&FileHeader, FileHeader.Size());
 
@@ -1079,20 +805,20 @@ int CV8File::UnpackToFolder16(const std::string &filename_in, const std::string 
 		file_out.close();
 	}
 
-	stBlockHeader64 BlockHeader;
-	stBlockHeader64 *pBlockHeader = &BlockHeader;
+	typename format::block_header_t BlockHeader;
+	typename format::block_header_t *pBlockHeader = &BlockHeader;
 
 	file.read((char*)&BlockHeader, BlockHeader.Size());
 
 	UINT ElemsAddrsSize;
-	stElemAddr64 *pElemsAddrs = nullptr;
-	ReadBlockData64(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+	typename format::elem_addr_t *pElemsAddrs = nullptr;
+	ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
 
-	unsigned int ElemsNum = ElemsAddrsSize / stElemAddr64::Size();
+	unsigned int ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
 
 	for (UINT i = 0; i < ElemsNum; i++) {
 
-		if (pElemsAddrs[i].fffffff != V8_FF64_SIGNATURE) {
+		if (pElemsAddrs[i].fffffff != format::UNDEFINED_VALUE) {
 			ElemsNum = i;
 			break;
 		}
@@ -1106,7 +832,7 @@ int CV8File::UnpackToFolder16(const std::string &filename_in, const std::string 
 		}
 
 		CV8Elem elem;
-		ReadBlockData64(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+		ReadBlockData<format>(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
 
 		string ElemName = elem.GetName();
 
@@ -1145,10 +871,10 @@ int CV8File::UnpackToFolder16(const std::string &filename_in, const std::string 
 
 			file.seekg(pElemsAddrs[i].elem_data_addr + offset, std::ios_base::beg);
 
-			stBlockHeader64 Header;
+			typename format::block_header_t Header;
 			file.read((char*)&Header, Header.Size());
 
-			ReadBlockData64(file, Header, file_out);
+			ReadBlockData<format>(file, Header, file_out);
 		}
 		file_out.close();
 
@@ -1173,397 +899,23 @@ int CV8File::UnpackToFolder(const std::string &filename_in, const std::string &d
 	}
 
 	if (IsV8File16(file)) {
-		file.close();
-		return UnpackToFolder16(filename_in, dirname, UnpackElemWithName, print_progress);
+		return unpack_to_folder<Format16>(file, dirname, UnpackElemWithName, print_progress);
 	}
 
-	boost::filesystem::path p_dir(dirname);
-
-	if (!boost::filesystem::exists(p_dir)) {
-		if (!boost::filesystem::create_directory(dirname)) {
-			std::cerr << "UnpackToDirectoryNoLoad. Error in creating directory!" << std::endl;
-			return ret;
-		}
-	}
-
-	stFileHeader FileHeader;
-	file.read((char*)&FileHeader, sizeof(FileHeader));
-
-	if (UnpackElemWithName.empty()) {
-		boost::filesystem::path filename_out(dirname);
-		filename_out /= "FileHeader";
-		boost::filesystem::ofstream file_out(filename_out, std::ios_base::binary);
-		file_out.write((char*)&FileHeader, sizeof(FileHeader));
-		file_out.close();
-	}
-
-	stBlockHeader BlockHeader;
-	stBlockHeader *pBlockHeader = &BlockHeader;
-
-	file.read((char*)&BlockHeader, sizeof(BlockHeader));
-
-	UINT ElemsAddrsSize;
-	stElemAddr *pElemsAddrs = nullptr;
-	ReadBlockData(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
-
-	unsigned int ElemsNum = ElemsAddrsSize / stElemAddr::Size();
-
-	for (UINT i = 0; i < ElemsNum; i++) {
-
-		if (pElemsAddrs[i].fffffff != V8_FF_SIGNATURE) {
-			ElemsNum = i;
-			break;
-		}
-
-		file.seekg(pElemsAddrs[i].elem_header_addr, std::ios_base::beg);
-		file.read((char*)&BlockHeader, sizeof(BlockHeader));
-
-		if (!pBlockHeader->IsCorrect()) {
-            ret = V8UNPACK_HEADER_ELEM_NOT_CORRECT;
-			break;
-		}
-
-		CV8Elem elem;
-		ReadBlockData(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
-
-		string ElemName = elem.GetName();
-
-		// если передано имя блока для распаковки, пропускаем все остальные
-		if (!UnpackElemWithName.empty() && UnpackElemWithName != ElemName) {
-			continue;
-		}
-
-		boost::filesystem::path filename_out;
-		boost::filesystem::ofstream file_out;
-
-		filename_out = dirname;
-		filename_out += "/";
-		filename_out += ElemName;
-		filename_out += ".header";
-
-		file_out.open(filename_out, std::ios_base::binary);
-		if (!file_out) {
-			std::cerr << "UnpackToFolder. Error in creating file!" << std::endl;
-			return -1;
-		}
-		file_out.write(reinterpret_cast<char*>(elem.pHeader), elem.HeaderSize);
-		file_out.close();
-
-		filename_out = dirname;
-		filename_out += "/";
-		filename_out += ElemName;
-		filename_out += ".data";
-
-		file_out.open(filename_out, std::ios_base::binary);
-		if (!file_out) {
-			std::cerr << "UnpackToFolder. Error in creating file!" << std::endl;
-			return -1;
-		}
-		if (pElemsAddrs[i].elem_data_addr != V8_FF_SIGNATURE) {
-
-			file.seekg(pElemsAddrs[i].elem_data_addr, std::ios_base::beg);
-
-			stBlockHeader Header;
-			file.read((char*)&Header, sizeof(Header));
-
-			ULONG BlockDataSize;
-			ReadBlockData(file, &Header, file_out, &BlockDataSize);
-		}
-		file_out.close();
-
-	}
-
-	return 0;
+	return unpack_to_folder<Format15>(file, dirname, UnpackElemWithName, print_progress);
 }
 
-int CV8File::ReadBlockData(char *pFileData, stBlockHeader *pBlockHeader, char *&pBlockData, UINT *BlockDataSize)
+template <typename format>
+static bool checkV8File(std::basic_istream<char> &file)
 {
-    DWORD data_size;
-    UINT read_in_bytes;
-
-    if (pBlockHeader != nullptr) {
-        data_size = pBlockHeader->data_size();
-        pBlockData = new char[data_size];
-        if (!pBlockData) {
-            std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
-            return -1;
-        }
-    } else
-        data_size = 0;
-
-    read_in_bytes = 0;
-    while (read_in_bytes < data_size) {
-
-        auto page_size = pBlockHeader->page_size();
-        auto next_page_addr = pBlockHeader->next_page_addr();
-
-        auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
-
-        memcpy(&pBlockData[read_in_bytes], (char*)(&pBlockHeader[1]), bytes_to_read);
-
-        read_in_bytes += bytes_to_read;
-
-        if (next_page_addr != V8_FF_SIGNATURE) // есть следующая страница
-            pBlockHeader = (stBlockHeader*) &pFileData[next_page_addr];
-        else
-            break;
-    }
-
-    if (BlockDataSize)
-        *BlockDataSize = data_size;
-
-    return 0;
-}
-
-int CV8File::ReadBlockData64(char *pFileData, stBlockHeader64 *pBlockHeader, char *&pBlockData, UINT *BlockDataSize)
-{
-	DWORD data_size;
-	UINT read_in_bytes;
-
-	if (pBlockHeader != nullptr) {
-		data_size = pBlockHeader->data_size();
-		pBlockData = new char[data_size];
-		if (!pBlockData) {
-			std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
-			return -1;
-		}
-	}
-	else
-		data_size = 0;
-
-	read_in_bytes = 0;
-	while (read_in_bytes < data_size) {
-
-		auto page_size = pBlockHeader->page_size();
-		auto next_page_addr = pBlockHeader->next_page_addr();
-
-		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
-
-		memcpy(&pBlockData[read_in_bytes], (char*)(&pBlockHeader[1]), bytes_to_read);
-
-		read_in_bytes += bytes_to_read;
-
-		if (next_page_addr != V8_FF_SIGNATURE) // есть следующая страница
-			pBlockHeader = (stBlockHeader64*)&pFileData[next_page_addr + V8_OFFSET_8316];
-		else
-			break;
-	}
-
-	if (BlockDataSize)
-		*BlockDataSize = data_size;
-
-	return 0;
-}
-
-int CV8File::ReadBlockData(std::basic_istream<char> &file, stBlockHeader *pBlockHeader, char *&pBlockData, UINT *BlockDataSize)
-{
-    DWORD data_size;
-    UINT read_in_bytes;
-
-    stBlockHeader Header;
-    if (pBlockHeader != nullptr) {
-        data_size = pBlockHeader->data_size();
-        pBlockData = new char[data_size];
-        if (!pBlockData) {
-            std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
-            return -1;
-        }
-        Header = *pBlockHeader;
-        pBlockHeader = &Header;
-    } else
-        data_size = 0;
-
-    read_in_bytes = 0;
-    while (read_in_bytes < data_size) {
-
-        auto page_size = pBlockHeader->page_size();
-        auto next_page_addr = pBlockHeader->next_page_addr();
-
-        auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
-
-        file.read(&pBlockData[read_in_bytes], bytes_to_read);
-
-        read_in_bytes += bytes_to_read;
-
-        if (next_page_addr != V8_FF_SIGNATURE) { // есть следующая страница
-            file.seekg(next_page_addr, std::ios_base::beg);
-            file.read((char*)&Header, sizeof(Header));
-        } else
-            break;
-    }
-
-    if (BlockDataSize)
-        *BlockDataSize = data_size;
-
-    return 0;
-}
-
-int CV8File::ReadBlockData64(std::basic_istream<char> &file, stBlockHeader64 *pBlockHeader, char *&pBlockData, UINT *BlockDataSize)
-{
-	ULONGLONG data_size;
-	UINT read_in_bytes;
-
-	stBlockHeader64 Header;
-	if (pBlockHeader != nullptr) {
-		data_size = pBlockHeader->data_size();
-		pBlockData = new char[data_size];
-		if (!pBlockData) {
-			std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
-			return -1;
-		}
-		Header = *pBlockHeader;
-		pBlockHeader = &Header;
-	}
-	else
-		data_size = 0;
-
-	read_in_bytes = 0;
-	while (read_in_bytes < data_size) {
-
-		auto page_size = pBlockHeader->page_size();
-		auto next_page_addr = pBlockHeader->next_page_addr();
-
-		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
-
-		file.read(&pBlockData[read_in_bytes], bytes_to_read);
-
-		read_in_bytes += bytes_to_read;
-
-		if (next_page_addr != V8_FF64_SIGNATURE) { // есть следующая страница
-			file.seekg(next_page_addr + V8_OFFSET_8316, std::ios_base::beg);
-			file.read((char*)&Header, sizeof(Header));
-		}
-		else
-			break;
-	}
-
-	if (BlockDataSize)
-		*BlockDataSize = data_size;
-
-	return 0;
-}
-
-
-int CV8File::ReadBlockData(std::basic_istream<char> &file, stBlockHeader *pBlockHeader, std::basic_ostream<char> &out, UINT *BlockDataSize)
-{
-    DWORD data_size;
-    UINT read_in_bytes;
-
-    stBlockHeader Header;
-    if (pBlockHeader != nullptr) {
-        data_size = pBlockHeader->data_size();
-        Header = *pBlockHeader;
-        pBlockHeader = &Header;
-    } else
-        data_size = 0;
-
-    read_in_bytes = 0;
-    while (read_in_bytes < data_size) {
-
-        auto page_size = pBlockHeader->page_size();
-        auto next_page_addr = pBlockHeader->next_page_addr();
-
-        auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
-
-        const int buf_size = 1024; // TODO: Настраиваемый размер буфера
-        char *pBlockData = new char [buf_size];
-        UINT read_done = 0;
-
-        while (read_done < bytes_to_read) {
-            file.read(pBlockData, MIN(buf_size, bytes_to_read - read_done));
-            int rd = file.gcount();
-            out.write(pBlockData, rd);
-            read_done += rd;
-        }
-
-        delete [] pBlockData;
-
-        read_in_bytes += bytes_to_read;
-
-        if (next_page_addr != V8_FF_SIGNATURE) { // есть следующая страница
-            file.seekg(next_page_addr, std::ios_base::beg);
-            file.read((char*)&Header, sizeof(Header));
-        } else
-            break;
-    }
-
-    if (BlockDataSize)
-        *BlockDataSize = data_size;
-
-    return 0;
-}
-
-int CV8File::ReadBlockData64(std::basic_istream<char> &file, const stBlockHeader64 &firstBlockHeader, std::basic_ostream<char> &out)
-{
-	UINT read_in_bytes;
-
-	auto data_size = firstBlockHeader.data_size();
-	auto Header = firstBlockHeader;
-	auto pBlockHeader = &Header;
-
-	read_in_bytes = 0;
-	while (read_in_bytes < data_size) {
-
-		auto page_size = pBlockHeader->page_size();
-		auto next_page_addr = pBlockHeader->next_page_addr();
-
-		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
-
-		const int buf_size = 1024; // TODO: Настраиваемый размер буфера
-		char *pBlockData = new char[buf_size];
-		UINT read_done = 0;
-
-		while (read_done < bytes_to_read) {
-			file.read(pBlockData, MIN(buf_size, bytes_to_read - read_done));
-			UINT rd = file.gcount();
-			out.write(pBlockData, rd);
-			read_done += rd;
-		}
-
-		delete[] pBlockData;
-
-		read_in_bytes += bytes_to_read;
-
-		if (next_page_addr != V8_FF_SIGNATURE) { // есть следующая страница
-			file.seekg(next_page_addr + V8_OFFSET_8316, std::ios_base::beg);
-			file.read((char*)&Header, sizeof(Header));
-		}
-		else
-			break;
-	}
-
-	return 0;
-}
-
-bool CV8File::IsV8File(std::basic_istream<char> &file)
-{
-    stFileHeader FileHeader;
-    stBlockHeader BlockHeader;
-
-	memset(&BlockHeader, 0, sizeof(BlockHeader));
-
-    std::ifstream::pos_type offset = file.tellg();
-
-    file.read((char*)&FileHeader, sizeof(FileHeader));
-    file.read((char*)&BlockHeader, sizeof(BlockHeader));
-
-    file.seekg(offset);
-    file.clear();
-
-    return BlockHeader.IsCorrect();
-}
-
-bool CV8File::IsV8File16(std::basic_istream<char>& file)
-{
-	stFileHeader64 FileHeader;
-	stBlockHeader64 BlockHeader;
+	typename format::file_header_t FileHeader;
+	typename format::block_header_t BlockHeader;
 
 	memset(&BlockHeader, 0, sizeof(BlockHeader));
 
 	std::ifstream::pos_type offset = file.tellg();
-	std::ifstream::pos_type base_offset = V8_OFFSET_8316;
 
-	file.seekg(base_offset);
+	file.seekg(format::BASE_OFFSET);
 	file.read((char*)& FileHeader, FileHeader.Size());
 	file.read((char*)& BlockHeader, BlockHeader.Size());
 
@@ -1573,43 +925,43 @@ bool CV8File::IsV8File16(std::basic_istream<char>& file)
 	return BlockHeader.IsCorrect();
 }
 
-bool CV8File::IsV8File(const char *pFileData, ULONG FileDataSize)
+template <typename format>
+static bool checkV8File(const char *pFileData, ULONG FileDataSize)
 {
-    if (!pFileData) {
-        return false;
-    }
-
-    // проверим чтобы длина файла не была меньше длины заголовка файла и заголовка блока адресов
-    if (FileDataSize < stFileHeader::Size() + stBlockHeader::Size()) {
-        return false;
-    }
-
-    stFileHeader *pFileHeader = (stFileHeader*) pFileData;
-    stBlockHeader *pBlockHeader = (stBlockHeader*) &pFileHeader[1];
-
-    return pBlockHeader->IsCorrect();
-}
-
-
-bool CV8File::IsV8File16(const char *pFileData, ULONG FileDataSize)
-{
-
 	if (!pFileData) {
 		return false;
 	}
 
 	// проверим чтобы длина файла не была меньше длины заголовка файла и заголовка блока адресов
-	if (FileDataSize < stFileHeader64::Size() + stBlockHeader64::Size()) {
+	if (FileDataSize < format::file_header_t::Size() + format::block_header_t::Size()) {
 		return false;
 	}
 
-	stFileHeader64 *pFileHeader = (stFileHeader64*)pFileData;
-	stBlockHeader64 *pBlockHeader = (stBlockHeader64*)&pFileHeader[1];
+	auto *pBlockHeader = (const typename format::block_header_t*)&pFileData[format::file_header_t::Size()];
 
 	return pBlockHeader->IsCorrect();
 }
 
 
+bool CV8File::IsV8File(std::basic_istream<char> &file)
+{
+	return checkV8File<typename Format15>(file);
+}
+
+bool CV8File::IsV8File16(std::basic_istream<char>& file)
+{
+	return checkV8File <CV8File::Format16> (file);
+}
+
+bool CV8File::IsV8File(const char *pFileData, ULONG FileDataSize)
+{
+	return checkV8File <CV8File::Format15> (pFileData, FileDataSize);
+}
+
+bool CV8File::IsV8File16(const char *pFileData, ULONG FileDataSize)
+{
+	return checkV8File <CV8File::Format16> (pFileData, FileDataSize);
+}
 
 struct PackElementEntry {
 	boost::filesystem::path  header_file;
@@ -1624,9 +976,13 @@ int CV8File::PackFromFolder(const std::string &dirname, const std::string &filen
 
 	boost::filesystem::ofstream file_out(filename_out, std::ios_base::binary);
 	if (!file_out) {
-		std::cerr << "SaveFile. Error in creating file!" << std::endl;
+		std::cerr << "SaveFile. Error in creating file: " << filename_out << std::endl;
 		return -1;
 	}
+
+	typedef stFileHeader file_header_t;
+	typedef stBlockHeader block_header_t;
+	typedef stElemAddr elem_addr_t;
 
 	// записываем заголовок
 	{
@@ -1657,7 +1013,7 @@ int CV8File::PackFromFolder(const std::string &dirname, const std::string &filen
 	} // for it
 
 	int ElemsNum = Elems.size();
-	std::vector<stElemAddr> ElemsAddrs;
+	std::vector<elem_addr_t> ElemsAddrs;
 	ElemsAddrs.reserve(ElemsNum);
 
 	// cur_block_addr - смещение текущего блока
@@ -1672,18 +1028,18 @@ int CV8File::PackFromFolder(const std::string &dirname, const std::string &filen
 	//      + [6] сами данные (не менее одной страницы?)
 
 	// [0] + [1]
-	DWORD cur_block_addr = stFileHeader::Size() + stBlockHeader::Size();
-	size_t addr_block_size = MAX(sizeof(stElemAddr) * ElemsNum, V8_DEFAULT_PAGE_SIZE);
+	DWORD cur_block_addr = file_header_t::Size() + block_header_t::Size();
+	size_t addr_block_size = MAX(sizeof(elem_addr_t) * ElemsNum, V8_DEFAULT_PAGE_SIZE);
 	cur_block_addr += addr_block_size; // +[2]
 
 	for (auto elem : Elems) {
-		stElemAddr addr;
+		elem_addr_t addr;
 
 		addr.elem_header_addr = cur_block_addr;
-		cur_block_addr += sizeof(stBlockHeader) + elem.header_size; // +[3]+[4]
+		cur_block_addr += sizeof(block_header_t) + elem.header_size; // +[3]+[4]
 
 		addr.elem_data_addr = cur_block_addr;
-		cur_block_addr += sizeof(stBlockHeader); // +[5]
+		cur_block_addr += sizeof(block_header_t); // +[5]
 		cur_block_addr += MAX(elem.data_size, V8_DEFAULT_PAGE_SIZE); // +[6]
 
 		addr.fffffff = V8_FF_SIGNATURE;
@@ -1691,7 +1047,7 @@ int CV8File::PackFromFolder(const std::string &dirname, const std::string &filen
 		ElemsAddrs.push_back(addr);
 	}
 
-	SaveBlockData(file_out, (char*) ElemsAddrs.data(), stElemAddr::Size() * ElemsNum);
+	SaveBlockData(file_out, (char*) ElemsAddrs.data(), elem_addr_t::Size() * ElemsNum);
 
 	for (auto elem : Elems) {
 
@@ -1712,7 +1068,11 @@ int CV8File::SaveBlockData(std::basic_ostream<char> &file_out, std::basic_istrea
 	if (PageSize < BlockDataSize)
 		PageSize = BlockDataSize;
 
-	stBlockHeader CurBlockHeader = stBlockHeader::create(BlockDataSize, PageSize, V8_FF_SIGNATURE);
+	typedef stFileHeader file_header_t;
+	typedef stBlockHeader block_header_t;
+	typedef stElemAddr elem_addr_t;
+
+	block_header_t CurBlockHeader = block_header_t::create(BlockDataSize, PageSize, V8_FF_SIGNATURE);
 	file_out.write(reinterpret_cast<char *>(&CurBlockHeader), sizeof(CurBlockHeader));
 	full_copy(file_in, file_out);
 
@@ -1728,7 +1088,11 @@ int CV8File::SaveBlockData(std::basic_ostream<char> &file_out, const char *pBloc
 	if (PageSize < BlockDataSize)
 		PageSize = BlockDataSize;
 
-	stBlockHeader CurBlockHeader = stBlockHeader::create(BlockDataSize, PageSize, V8_FF_SIGNATURE);
+	typedef stFileHeader file_header_t;
+	typedef stBlockHeader block_header_t;
+	typedef stElemAddr elem_addr_t;
+
+	block_header_t CurBlockHeader = block_header_t::create(BlockDataSize, PageSize, V8_FF_SIGNATURE);
 	file_out.write(reinterpret_cast<char *>(&CurBlockHeader), sizeof(CurBlockHeader));
 	file_out.write(reinterpret_cast<const char *>(pBlockData), BlockDataSize);
 
@@ -1943,7 +1307,12 @@ int CV8File::BuildCfFile(const std::string &in_dirname, const std::string &out_f
         return -1;
     }
 
-    UINT ElemsNum = 0;
+	typedef stFileHeader file_header_t;
+	typedef stBlockHeader block_header_t;
+	typedef stElemAddr elem_addr_t;
+
+
+	UINT ElemsNum = 0;
     {
         boost::filesystem::directory_iterator d_end;
         boost::filesystem::directory_iterator dit(in_dirname);
@@ -1960,17 +1329,17 @@ int CV8File::BuildCfFile(const std::string &in_dirname, const std::string &out_f
         }
     }
 
-    stFileHeader FileHeader;
+	file_header_t FileHeader;
 
     //Предварительные расчеты длины заголовка таблицы содержимого TOC файла
     FileHeader.next_page_addr = V8_FF_SIGNATURE;
     FileHeader.page_size = V8_DEFAULT_PAGE_SIZE;
     FileHeader.storage_ver = 0;
     FileHeader.reserved = 0;
-    DWORD cur_block_addr = stFileHeader::Size() + stBlockHeader::Size();
-    stElemAddr *pTOC;
-    pTOC = new stElemAddr[ElemsNum];
-	cur_block_addr += MAX(stElemAddr::Size() * ElemsNum, V8_DEFAULT_PAGE_SIZE);
+    DWORD cur_block_addr = file_header_t::Size() + block_header_t::Size();
+    elem_addr_t *pTOC;
+    pTOC = new elem_addr_t[ElemsNum];
+	cur_block_addr += MAX(elem_addr_t::Size() * ElemsNum, V8_DEFAULT_PAGE_SIZE);
 
     boost::filesystem::ofstream file_out(out_filename, std::ios_base::binary);
     //Открываем выходной файл контейнер на запись
@@ -2097,7 +1466,7 @@ int CV8File::BuildCfFile(const std::string &in_dirname, const std::string &out_f
     file_out.write(reinterpret_cast<const char*>(&FileHeader), sizeof(FileHeader));
 
     //Записываем блок TOC
-    SaveBlockData(file_out, (const char*) pTOC, stElemAddr::Size() * ElemsNum);
+    SaveBlockData(file_out, (const char*) pTOC, elem_addr_t::Size() * ElemsNum);
 
     delete [] pTOC;
 
@@ -2243,22 +1612,23 @@ int CV8File::Pack()
     return 0;
 }
 
-
 int CV8File::GetData(char **DataBuffer, ULONG *DataBufferSize)
 {
 
-    UINT ElemsNum = Elems.size();
+	typedef Format15 format;
+
+	UINT ElemsNum = Elems.size();
 
     ULONG NeedDataBufferSize = 0;
-    NeedDataBufferSize += stFileHeader::Size();
+    NeedDataBufferSize += format::file_header_t::Size();
 
     // заголовок блока и данные блока - адреса элементов с учетом минимальной страницы 512 байт
-    NeedDataBufferSize += stBlockHeader::Size() + MAX(stElemAddr::Size() * ElemsNum, V8_DEFAULT_PAGE_SIZE);
+    NeedDataBufferSize += format::block_header_t::Size() + MAX(format::elem_addr_t::Size() * ElemsNum, V8_DEFAULT_PAGE_SIZE);
 
 	for (auto elem : Elems) {
 
 		// заголовок блока и данные блока - заголовок элемента
-		NeedDataBufferSize += stBlockHeader::Size()  + elem.HeaderSize;
+		NeedDataBufferSize += format::block_header_t::Size()  + elem.HeaderSize;
 
 		if (elem.IsV8File) {
 
@@ -2266,28 +1636,28 @@ int CV8File::GetData(char **DataBuffer, ULONG *DataBufferSize)
 			elem.IsV8File = false;
 
 		}
-		NeedDataBufferSize += stBlockHeader::Size() + MAX(elem.DataSize, V8_DEFAULT_PAGE_SIZE);
+		NeedDataBufferSize += format::block_header_t::Size() + MAX(elem.DataSize, V8_DEFAULT_PAGE_SIZE);
 	}
 
 
     // Создаем и заполняем данные по адресам элементов
-    stElemAddr *pTempElemsAddrs = new stElemAddr[ElemsNum], *pCurrentTempElem;
+	format::elem_addr_t *pTempElemsAddrs = new format::elem_addr_t[ElemsNum], *pCurrentTempElem;
     pCurrentTempElem = pTempElemsAddrs;
 
-    DWORD cur_block_addr = stFileHeader::Size() + stBlockHeader::Size();
-	cur_block_addr += MAX(V8_DEFAULT_PAGE_SIZE, stElemAddr::Size() * ElemsNum);
+    DWORD cur_block_addr = format::file_header_t::Size() + format::block_header_t::Size();
+	cur_block_addr += MAX(V8_DEFAULT_PAGE_SIZE, format::elem_addr_t::Size() * ElemsNum);
 
 	for (auto elem : Elems) {
 
 		pCurrentTempElem->elem_header_addr = cur_block_addr;
-		cur_block_addr += sizeof(stBlockHeader) + elem.HeaderSize;
+		cur_block_addr += format::block_header_t::Size() + elem.HeaderSize;
 
 		pCurrentTempElem->elem_data_addr = cur_block_addr;
-		cur_block_addr += sizeof(stBlockHeader);
+		cur_block_addr += format::block_header_t::Size();
 
 		cur_block_addr += MAX(elem.DataSize, V8_DEFAULT_PAGE_SIZE);
 
-		pCurrentTempElem->fffffff = V8_FF_SIGNATURE;
+		pCurrentTempElem->fffffff = format::UNDEFINED_VALUE;
 		++pCurrentTempElem;
 	}
 
@@ -2299,17 +1669,17 @@ int CV8File::GetData(char **DataBuffer, ULONG *DataBufferSize)
 
 
     // записываем заголовок
-    memcpy(cur_pos, (char*) &FileHeader, stFileHeader::Size());
-    cur_pos += stFileHeader::Size();
+    memcpy(cur_pos, (char*) &FileHeader, format::file_header_t::Size());
+    cur_pos += format::file_header_t::Size();
 
     // записываем адреса элементов
-    SaveBlockDataToBuffer(&cur_pos, (char*) pTempElemsAddrs, stElemAddr::Size() * ElemsNum);
+    SaveBlockDataToBuffer<format>(&cur_pos, (char*) pTempElemsAddrs, format::elem_addr_t::Size() * ElemsNum);
 
     // записываем элементы (заголовок и данные)
 	for (auto elem : Elems) {
 
-		SaveBlockDataToBuffer(&cur_pos, elem.pHeader, elem.HeaderSize, elem.HeaderSize);
-		SaveBlockDataToBuffer(&cur_pos, elem.pData, elem.DataSize);
+		SaveBlockDataToBuffer<format>(&cur_pos, elem.pHeader, elem.HeaderSize, elem.HeaderSize);
+		SaveBlockDataToBuffer<format>(&cur_pos, elem.pData, elem.DataSize);
 	}
 
     //fclose(file_out);
@@ -2321,29 +1691,6 @@ int CV8File::GetData(char **DataBuffer, ULONG *DataBufferSize)
 
     return 0;
 
-}
-
-
-int CV8File::SaveBlockDataToBuffer(char **cur_pos, const char *pBlockData, UINT BlockDataSize, UINT PageSize)
-{
-
-    if (PageSize < BlockDataSize)
-        PageSize = BlockDataSize;
-
-    stBlockHeader CurBlockHeader = stBlockHeader::create(BlockDataSize, PageSize, V8_FF_SIGNATURE);
-    memcpy(*cur_pos, (char*)&CurBlockHeader, stBlockHeader::Size());
-    *cur_pos += stBlockHeader::Size();
-
-
-    memcpy(*cur_pos, pBlockData, BlockDataSize);
-    *cur_pos += BlockDataSize;
-
-    for(UINT i = 0; i < PageSize - BlockDataSize; i++) {
-        **cur_pos = 0;
-        ++*cur_pos;
-    }
-
-    return 0;
 }
 
 CV8File::stBlockHeader CV8File::stBlockHeader::create(uint32_t block_data_size, uint32_t page_size, uint32_t next_page_addr)
@@ -2362,7 +1709,6 @@ CV8File::stBlockHeader CV8File::stBlockHeader::create(uint32_t block_data_size, 
 
 	return BlockHeader;
 }
-
 
 CV8File::stBlockHeader64 CV8File::stBlockHeader64::create(ULONGLONG block_data_size, ULONGLONG page_size, ULONGLONG next_page_addr)
 {
