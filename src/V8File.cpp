@@ -14,6 +14,7 @@ at http://mozilla.org/MPL/2.0/.
  */
 
 #include "V8File.h"
+#include "zlib.h"
 #include <iostream>
 #include <iterator>
 
@@ -69,27 +70,28 @@ CV8Elem::~CV8Elem()
 
 
 template<typename format>
-static int ReadBlockData(char *pFileData, typename format::block_header_t *pBlockHeader, char *&pBlockData, uint32_t *BlockDataSize)
+static size_t
+ReadBlockData(char *pFileData, typename format::block_header_t *pBlockHeader, char *&pBlockData)
 {
-	uint32_t data_size;
-	uint32_t read_in_bytes;
+	if (pBlockHeader == nullptr) {
+		return 0;
+	}
 
-	if (pBlockHeader != nullptr) {
-		data_size = pBlockHeader->data_size();
-		pBlockData = new char[data_size];
-		if (!pBlockData) {
-			std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
-			return -1;
-		}
-	} else
-		data_size = 0;
+	size_t data_size;
+	size_t read_in_bytes;
+
+	data_size = pBlockHeader->data_size();
+	pBlockData = new char[data_size];
+	if (!pBlockData) {
+		std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
+		return (size_t)(-1);
+	}
 
 	read_in_bytes = 0;
 	while (read_in_bytes < data_size) {
 
 		auto page_size = pBlockHeader->page_size();
 		auto next_page_addr = pBlockHeader->next_page_addr();
-
 		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
 
 		memcpy(&pBlockData[read_in_bytes], (char*)(&pBlockHeader[1]), bytes_to_read);
@@ -102,38 +104,35 @@ static int ReadBlockData(char *pFileData, typename format::block_header_t *pBloc
 			break;
 	}
 
-	if (BlockDataSize)
-		*BlockDataSize = data_size;
-
-	return 0;
+	return data_size;
 }
 
 template<typename format>
-static int ReadBlockData(std::basic_istream<char> &file, typename format::block_header_t *pBlockHeader, char *&pBlockData, uint32_t *BlockDataSize)
+static size_t
+ReadBlockData(std::basic_istream<char> &file, typename format::block_header_t *pBlockHeader, char *&pBlockData)
 {
+	if (pBlockHeader == nullptr) {
+		return 0;
+	}
+
 	uint64_t data_size;
 	uint32_t read_in_bytes;
 
 	typename format::block_header_t Header;
-	if (pBlockHeader != nullptr) {
-		data_size = pBlockHeader->data_size();
-		pBlockData = new char[data_size];
-		if (!pBlockData) {
-			std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
-			return -1;
-		}
-		Header = *pBlockHeader;
-		pBlockHeader = &Header;
+	data_size = pBlockHeader->data_size();
+	pBlockData = new char[data_size];
+	if (!pBlockData) {
+		std::cerr << "ReadBlockData. BlockData == nullptr." << std::endl;
+		return (size_t)(-1);
 	}
-	else
-		data_size = 0;
+	Header = *pBlockHeader;
+	pBlockHeader = &Header;
 
 	read_in_bytes = 0;
 	while (read_in_bytes < data_size) {
 
 		auto page_size = pBlockHeader->page_size();
 		auto next_page_addr = pBlockHeader->next_page_addr();
-
 		auto bytes_to_read = MIN(page_size, data_size - read_in_bytes);
 
 		file.read(&pBlockData[read_in_bytes], bytes_to_read);
@@ -148,10 +147,7 @@ static int ReadBlockData(std::basic_istream<char> &file, typename format::block_
 			break;
 	}
 
-	if (BlockDataSize)
-		*BlockDataSize = data_size;
-
-	return 0;
+	return data_size;
 }
 
 template<typename format>
@@ -221,8 +217,6 @@ static int SaveBlockDataToBuffer(char **cur_pos, const char *pBlockData, uint32_
 
 int CV8File::LoadFile(char *pFileData, uint32_t FileDataSize, bool boolInflate, bool UnpackWhenNeed)
 {
-    int ret = 0;
-
     if (!pFileData) {
         return V8UNPACK_ERROR;
     }
@@ -231,62 +225,59 @@ int CV8File::LoadFile(char *pFileData, uint32_t FileDataSize, bool boolInflate, 
         return V8UNPACK_NOT_V8_FILE;
     }
 
-	typedef stFileHeader file_header_t;
-	typedef stBlockHeader block_header_t;
-	typedef stElemAddr elem_addr_t;
+	typedef Format15 format;
 
     char *InflateBuffer = nullptr;
     uint32_t InflateSize = 0;
 
-	auto *pFileHeader = (file_header_t*) pFileData;
+	auto *pFileHeader = (format::file_header_t*) pFileData;
 
-	block_header_t *pBlockHeader;
+	format::block_header_t *pBlockHeader;
 
-    pBlockHeader = (block_header_t*) &pFileHeader[1];
-    memcpy(&FileHeader, pFileData, file_header_t::Size());
-
-
-    uint32_t ElemsAddrsSize;
-	elem_addr_t *pElemsAddrs = nullptr;
-    ReadBlockData<Format15>(pFileData, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+    pBlockHeader = (format::block_header_t*) &pFileHeader[1];
+    memcpy(&FileHeader, pFileData, format::file_header_t::Size());
 
 
-    unsigned int ElemsNum = ElemsAddrsSize / elem_addr_t::Size();
+	format::elem_addr_t *pElemsAddrs = nullptr;
+	auto ElemsAddrsSize = ReadBlockData<Format15>(pFileData, pBlockHeader, (char*&)pElemsAddrs);
+    auto ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
 
     Elems.clear();
 
+	auto ret = V8UNPACK_OK;
     for (uint32_t i = 0; i < ElemsNum; i++) {
 
-        if (pElemsAddrs[i].fffffff != elem_addr_t::UNDEFINED_VALUE) {
+        if (pElemsAddrs[i].fffffff != format::elem_addr_t::UNDEFINED_VALUE) {
             ElemsNum = i;
             break;
         }
 
-        pBlockHeader = (block_header_t*) &pFileData[pElemsAddrs[i].elem_header_addr];
+        pBlockHeader = (format::block_header_t*) &pFileData[pElemsAddrs[i].elem_header_addr + format::BASE_OFFSET];
 
         if (!pBlockHeader->IsCorrect()) {
             ret = V8UNPACK_HEADER_ELEM_NOT_CORRECT;
             break;
         }
 
-        CV8Elem elem;
-        ReadBlockData<Format15>(pFileData, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+		CV8Elem elem;
+		elem.HeaderSize = ReadBlockData<Format15>(pFileData, pBlockHeader, elem.pHeader);
 
-        //080228 Блока данных может не быть, тогда адрес блока данных равен 0x7fffffff
-        if (pElemsAddrs[i].elem_data_addr != elem_addr_t::UNDEFINED_VALUE) {
-            pBlockHeader = (block_header_t*) &pFileData[pElemsAddrs[i].elem_data_addr];
-			ReadBlockData<Format15>(pFileData, pBlockHeader, elem.pData, &elem.DataSize);
-        } else
-			ReadBlockData<Format15>(pFileData, nullptr, elem.pData, &elem.DataSize);
+		//080228 Блока данных может не быть, тогда адрес блока данных равен 0x7fffffff
+		if (pElemsAddrs[i].elem_data_addr != format::elem_addr_t::UNDEFINED_VALUE) {
+			pBlockHeader = (format::block_header_t*) &pFileData[pElemsAddrs[i].elem_data_addr + format::BASE_OFFSET];
+			elem.DataSize = ReadBlockData<Format15>(pFileData, pBlockHeader, elem.pData);
+		} else
+			elem.DataSize = ReadBlockData<Format15>(pFileData, nullptr, elem.pData);
 
-        elem.UnpackedData.IsDataPacked = false;
+		elem.UnpackedData.IsDataPacked = false;
 
-        if (boolInflate && IsDataPacked) {
-            int ret = Inflate(elem.pData, &InflateBuffer, elem.DataSize, &InflateSize);
+		if (boolInflate && IsDataPacked) {
 
-            if (ret)
-                IsDataPacked = false;
-            else {
+			int inflate_result = Inflate(elem.pData, &InflateBuffer, elem.DataSize, &InflateSize);
+
+			if (inflate_result != Z_OK)
+				IsDataPacked = false;
+			else {
 				elem.NeedUnpack = false; // отложенная распаковка не нужна
 				delete[] elem.pData; //нераспакованные данные больше не нужны
 				elem.pData = new char[InflateSize];
@@ -295,8 +286,8 @@ int CV8File::LoadFile(char *pFileData, uint32_t FileDataSize, bool boolInflate, 
 
 				delete [] InflateBuffer;
 				InflateBuffer = nullptr;
-            }
-        }
+			}
+		}
 
 		if (IsV8File(elem.pData, elem.DataSize)) {
 			ret = elem.UnpackedData.LoadFile(elem.pData, elem.DataSize, boolInflate);
@@ -308,17 +299,16 @@ int CV8File::LoadFile(char *pFileData, uint32_t FileDataSize, bool boolInflate, 
 			elem.IsV8File = true;
 		}
 
-        Elems.push_back(elem);
+		Elems.push_back(elem);
 
-    } // for i = ..ElemsNum
+	} // for i = ..ElemsNum
 
-
-    if (InflateBuffer)
-        free(InflateBuffer);
+	if (InflateBuffer)
+		free(InflateBuffer);
 
 	delete [] pElemsAddrs;
 
-    return ret;
+	return ret;
 }
 
 void CV8File::Dispose()
@@ -329,8 +319,6 @@ void CV8File::Dispose()
 	}
 	Elems.clear();
 }
-
-//++ dmpas Затычка Issue6
 
 // Нѣкоторый условный предѣл
 const size_t SmartLimit = 200 *1024;
@@ -428,10 +416,8 @@ int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 
 		/* Имѣем полное право помѣстить файл в память */
 
-		uint32_t uDataSize;
 		char *source_data = nullptr;
-
-		ReadBlockData<format>(file, &header, source_data, &uDataSize);
+		auto uDataSize = ReadBlockData<format>(file, &header, source_data);
 
 		char *out_data = nullptr;
 		uint32_t out_data_size = 0;
@@ -445,12 +431,9 @@ int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 
 			source_data = nullptr;
 		}
-
 		delete[] source_data;
 
-
 		bool unpacked_as_V8 = false;
-
 		if (IsV8File(out_data, uDataSize)) {
 			/* Это 8-файл - раскладываем его*/
 
@@ -478,10 +461,7 @@ int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 	return ret;
 }
 
-
-//-- dmpas Затычка Issue6
-
-bool NameInFilter(const string &name, const vector<string> &filter)
+static bool NameInFilter(const string &name, const vector<string> &filter)
 {
 	return filter.empty()
 		|| find(filter.begin(), filter.end(), name) != filter.end();
@@ -513,9 +493,8 @@ static int recursive_unpack(const string& directory, basic_istream<char>& file, 
 
 	file.read((char*)& BlockHeader, BlockHeader.Size());
 
-	uint32_t ElemsAddrsSize;
 	typename format::elem_addr_t* pElemsAddrs = nullptr;
-	ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+	auto ElemsAddrsSize = ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs);
 
 	unsigned int ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
 
@@ -535,8 +514,7 @@ static int recursive_unpack(const string& directory, basic_istream<char>& file, 
 		}
 
 		CV8Elem elem;
-		ReadBlockData<format>(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
-
+		elem.HeaderSize = ReadBlockData<format>(file, pBlockHeader, elem.pHeader);
 		string ElemName = elem.GetName();
 
 		if (!NameInFilter(ElemName, filter)) {
@@ -590,9 +568,8 @@ static int list_files(boost::filesystem::ifstream &file)
 
 	file.read((char*)&BlockHeader, BlockHeader.Size());
 
-	uint32_t ElemsAddrsSize;
 	typename format::elem_addr_t *pElemsAddrs = nullptr;
-	ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+	auto ElemsAddrsSize = ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs);
 
 	unsigned int ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
 
@@ -610,14 +587,14 @@ static int list_files(boost::filesystem::ifstream &file)
 		}
 
 		CV8Elem elem;
-		ReadBlockData<format>(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+		elem.HeaderSize = ReadBlockData<format>(file, pBlockHeader, elem.pHeader);
 
 		string ElemName = elem.GetName();
 
 		std::cout << ElemName << std::endl;
 	}
 
-	return 0;
+	return V8UNPACK_OK;
 }
 
 int ListFiles(const std::string &filename)
@@ -643,7 +620,7 @@ int ListFiles(const std::string &filename)
 template<typename format>
 static int unpack_to_folder(boost::filesystem::ifstream &file, const std::string &dirname, const std::string &UnpackElemWithName, bool print_progress)
 {
-	int ret = 0;
+	int ret = V8UNPACK_OK;
 
 	boost::filesystem::path p_dir(dirname);
 
@@ -673,9 +650,8 @@ static int unpack_to_folder(boost::filesystem::ifstream &file, const std::string
 
 	file.read((char*)&BlockHeader, BlockHeader.Size());
 
-	uint32_t ElemsAddrsSize;
 	typename format::elem_addr_t *pElemsAddrs = nullptr;
-	ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs, &ElemsAddrsSize);
+	auto ElemsAddrsSize = ReadBlockData<format>(file, pBlockHeader, (char*&)pElemsAddrs);
 
 	unsigned int ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
 
@@ -695,7 +671,7 @@ static int unpack_to_folder(boost::filesystem::ifstream &file, const std::string
 		}
 
 		CV8Elem elem;
-		ReadBlockData<format>(file, pBlockHeader, elem.pHeader, &elem.HeaderSize);
+		elem.HeaderSize = ReadBlockData<format>(file, pBlockHeader, elem.pHeader);
 
 		string ElemName = elem.GetName();
 
@@ -1527,17 +1503,9 @@ stBlockHeader stBlockHeader::create(uint32_t block_data_size, uint32_t page_size
 stBlockHeader stBlockHeader::create(uint32_t block_data_size, uint32_t page_size, uint32_t next_page_addr)
 {
 	stBlockHeader BlockHeader;
-	char buf[9];
-
-	sprintf(buf, "%08x", block_data_size);
-	strncpy(BlockHeader.data_size_hex, buf, 8);
-
-	sprintf(buf, "%08x", page_size);
-	strncpy(BlockHeader.page_size_hex, buf, 8);
-
-	sprintf(buf, "%08x", next_page_addr);
-	strncpy(BlockHeader.next_page_addr_hex, buf, 8);
-
+	BlockHeader.set_data_size(block_data_size);
+	BlockHeader.set_page_size(page_size);
+	BlockHeader.set_next_page_addr(next_page_addr);
 	return BlockHeader;
 }
 
@@ -1548,20 +1516,10 @@ stBlockHeader64 stBlockHeader64::create(uint64_t block_data_size, uint64_t page_
 
 stBlockHeader64 stBlockHeader64::create(uint64_t  block_data_size, uint64_t  page_size, uint64_t next_page_addr)
 {
-	// TODO : надо реализовать сборку под 8.3.16
-	// не факт что это будет работать, т.к. сборка не реализована пока и не проверялась
 	stBlockHeader64 BlockHeader;
-	char buf[17];
-
-	sprintf(buf, "%16llx", block_data_size);
-	strncpy(BlockHeader.data_size_hex, buf, 16);
-
-	sprintf(buf, "%16llx", page_size);
-	strncpy(BlockHeader.page_size_hex, buf, 16);
-
-	sprintf(buf, "%16llx", next_page_addr);
-	strncpy(BlockHeader.next_page_addr_hex, buf, 16);
-
+	BlockHeader.set_data_size(block_data_size);
+	BlockHeader.set_page_size(page_size);
+	BlockHeader.set_next_page_addr(next_page_addr);
 	return BlockHeader;
 }
 

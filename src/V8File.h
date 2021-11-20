@@ -54,6 +54,9 @@ const int V8UNPACK_SHOW_USAGE = -22;
 uint32_t _httoi(const char *value);
 uint64_t _httoi64(const char *value);
 
+void _itoht(uint32_t value, char *ht);
+void _itoht64(uint64_t value, char *ht);
+
 class CV8Elem;
 
 struct stFileHeader
@@ -114,22 +117,16 @@ struct stElemAddr64
 
 struct stBlockHeader
 {
-	char EOL_0D;
-	char EOL_0A;
+	char EOL_0D = 0x0d;
+	char EOL_0A = 0x0a;
 	char data_size_hex[8] = {'0', '0', '0', '0', '0', '0', '0', '0'};
-	char space1;
+	char space1 = ' ';
 	char page_size_hex[8] = {'0', '0', '0', '0', '0', '0', '0', '0'};
-	char space2;
+	char space2 = ' ';
 	char next_page_addr_hex[8] = {'7', 'f', 'f', 'f', 'f', 'f', 'f', 'f'};
-	char space3;
-	char EOL2_0D;
-	char EOL2_0A;
-
-	stBlockHeader():
-			EOL_0D(0xd), EOL_0A(0xa),
-			space1(' '), space2(' '), space3(' '),
-			EOL2_0D(0xd), EOL2_0A(0xa)
-	{}
+	char space3 = ' ';
+	char EOL2_0D = 0x0d;
+	char EOL2_0A = 0x0a;
 
 	static stBlockHeader create(uint32_t block_data_size, uint32_t page_size, uint32_t next_page_addr);
 	static stBlockHeader create(uint32_t block_data_size, uint32_t page_size);
@@ -162,32 +159,36 @@ struct stBlockHeader
 		return _httoi(next_page_addr_hex);
 	}
 
+	void set_data_size(uint32_t data_size) {
+		_itoht(data_size, data_size_hex);
+	}
+
+	void set_page_size(uint32_t page_size) {
+		_itoht(page_size, page_size_hex);
+	}
+
+	void set_next_page_addr(uint32_t next_page_addr) {
+		_itoht(next_page_addr, next_page_addr_hex);
+	}
+
 	static const uint32_t UNDEFINED_VALUE = 0x7fffffff;
 };
 
 struct stBlockHeader64
 {
-	char EOL_0D;
-	char EOL_0A;
+	char EOL_0D = 0x0d;
+	char EOL_0A = 0x0a;
 	char data_size_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
-	char space1;
+	char space1 = ' ';
 	char page_size_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
-	char space2;
+	char space2 = ' ';
 	char next_page_addr_hex[16] = { ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ' }; // 64 бита теперь
-	char space3;
-	char EOL2_0D;
-	char EOL2_0A;
+	char space3 = ' ';
+	char EOL2_0D = 0x0d;
+	char EOL2_0A = 0x0a;
 
-	stBlockHeader64() :
-			EOL_0D(0xd), EOL_0A(0xa),
-			space1(' '), space2(' '), space3(' '),
-			EOL2_0D(0xd), EOL2_0A(0xa)
-	{
-
-	}
-
-	static stBlockHeader64 create(uint64_t block_data_size, uint64_t  page_size, uint64_t next_page_addr);
-	static stBlockHeader64 create(uint64_t  block_data_size, uint64_t  page_size);
+	static stBlockHeader64 create(uint64_t block_data_size, uint64_t page_size, uint64_t next_page_addr);
+	static stBlockHeader64 create(uint64_t block_data_size, uint64_t page_size);
 
 	static uint32_t Size()
 	{
@@ -215,6 +216,18 @@ struct stBlockHeader64
 
 	uint64_t next_page_addr() const {
 		return _httoi64(next_page_addr_hex);
+	}
+
+	void set_data_size(uint64_t data_size) {
+		_itoht64(data_size, data_size_hex);
+	}
+
+	void set_page_size(uint64_t page_size) {
+		_itoht64(page_size, page_size_hex);
+	}
+
+	void set_next_page_addr(uint64_t next_page_addr) {
+		_itoht64(next_page_addr, next_page_addr_hex);
 	}
 
 	static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
@@ -298,9 +311,9 @@ public:
 	void Dispose();
 
 	char               *pHeader = nullptr;
-	uint32_t                HeaderSize = 0;
+	uint32_t            HeaderSize = 0;
 	char               *pData = nullptr;
-	uint32_t                DataSize = 0;
+	uint32_t            DataSize = 0;
 	CV8File             UnpackedData;
 	bool                IsV8File = false;
 	bool                NeedUnpack = false;

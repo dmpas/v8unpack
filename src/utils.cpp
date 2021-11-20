@@ -19,12 +19,13 @@ at http://mozilla.org/MPL/2.0/.
 
 namespace v8unpack {
 
-template<typename T>
-void hex_to_int(const char *hextext, int length, T &value)
+template<typename T, int length>
+T hex_to_int(const char *hextext)
 {
-	for (auto s = hextext;
-		 length && *s != '\0' && *s != ' ';
-		 length--, s++) {
+	auto s = hextext;
+	auto i = length;
+	T value = 0;
+	for (;i; i--, s++) {
 
 		auto lower_s = tolower(*s);
 		if (lower_s >= '0' && lower_s <= '9') {
@@ -38,21 +39,40 @@ void hex_to_int(const char *hextext, int length, T &value)
 		else
 			break;
 	}
+	return value;
 }
 
 uint32_t _httoi(const char *value)
 {
-	uint32_t result = 0;
-	hex_to_int(value, 8, result);
-	return result;
+	return hex_to_int<uint32_t, 8>(value);
 }
 
 uint64_t _httoi64(const char *value)
 {
-	uint64_t result = 0;
-	hex_to_int(value, 16, result);
-	return result;
+	return hex_to_int<uint64_t, 16>(value);
 }
+
+static const char hex[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+
+template<typename T, int N>
+void int_to_hex(T value, char *buf)
+{
+	for (int i = 2*N; i; i--) {
+		buf[i - 1] = hex[value & 0xf];
+		value <<= 4;
+	}
+}
+
+void _itoht(uint32_t value, char *ht)
+{
+	int_to_hex<uint32_t, 8>(value, ht);
+}
+
+void _itoht64(uint64_t value, char *ht)
+{
+	int_to_hex<uint64_t, 16>(value, ht);
+}
+
 
 int Inflate(const std::string &in_filename, const std::string &out_filename)
 {
