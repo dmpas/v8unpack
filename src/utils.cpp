@@ -6,6 +6,16 @@ at http://mozilla.org/MPL/2.0/.
 ----------------------------------------------------------*/
 #include "V8File.h"
 #include <iostream>
+#include "zlib.h"
+
+#define CHUNK 16384
+#ifndef DEF_MEM_LEVEL
+#  if MAX_MEM_LEVEL >= 8
+#    define DEF_MEM_LEVEL 8
+#  else
+#    define DEF_MEM_LEVEL  MAX_MEM_LEVEL
+#  endif
+#endif
 
 namespace v8unpack {
 
@@ -30,16 +40,16 @@ void hex_to_int(const char *hextext, int length, T &value)
 	}
 }
 
-DWORD _httoi(const char *value)
+uint32_t _httoi(const char *value)
 {
-	DWORD result = 0;
+	uint32_t result = 0;
 	hex_to_int(value, 8, result);
 	return result;
 }
 
-ULONGLONG _httoi64(const char *value)
+uint64_t _httoi64(const char *value)
 {
-	ULONGLONG result = 0;
+	uint64_t result = 0;
 	hex_to_int(value, 16, result);
 	return result;
 }
@@ -257,7 +267,7 @@ int Inflate(std::istream &source, std::ostream &dest)
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
-int Inflate(const char* in_buf, char** out_buf, ULONG in_len, ULONG* out_len)
+int Inflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_len)
 {
 	int ret;
 	unsigned have;
@@ -317,7 +327,7 @@ int Inflate(const char* in_buf, char** out_buf, ULONG in_len, ULONG* out_len)
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
-int Deflate(const char* in_buf, char** out_buf, ULONG in_len, ULONG* out_len)
+int Deflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_len)
 {
 	int ret, flush;
 	unsigned have;

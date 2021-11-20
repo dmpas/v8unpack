@@ -29,7 +29,7 @@ OBJDIR_RELEASE = obj/Release
 DEP_RELEASE = 
 OUT_RELEASE = bin/Release/v8unpack
 
-OBJ_RELEASE = $(OBJDIR_RELEASE)/src/V8File.o $(OBJDIR_RELEASE)/src/main.o
+OBJ_RELEASE = $(OBJDIR_RELEASE)/src/V8File.o $(OBJDIR_RELEASE)/src/main.o $(OBJDIR_RELEASE)/src/utils.o
 PREFIX=$(DESTDIR)/usr/bin
 BASH_COMPLETION_PREFIX=$(DESTDIR)/etc/bash_completion.d
 
@@ -65,6 +65,9 @@ $(OBJDIR_RELEASE)/src/V8File.o: src/V8File.cpp src/V8File.h
 
 $(OBJDIR_RELEASE)/src/main.o: src/main.cpp src/V8File.h
 	$(CXX) -D__LINUX $(CFLAGS_RELEASE) $(INC_RELEASE) -c src/main.cpp -o $(OBJDIR_RELEASE)/src/main.o
+
+$(OBJDIR_RELEASE)/src/utils.o: src/utils.cpp src/V8File.h
+	$(CXX) -D__LINUX $(CFLAGS_RELEASE) $(INC_RELEASE) -c src/utils.cpp -o $(OBJDIR_RELEASE)/src/utils.o
 
 clean_release: 
 	rm -f $(OBJ_RELEASE) $(OUT_RELEASE)

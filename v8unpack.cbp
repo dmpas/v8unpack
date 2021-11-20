@@ -51,6 +51,7 @@
 		</Unit>
 		<Unit filename="src/V8File.cpp" />
 		<Unit filename="src/V8File.h" />
+		<Unit filename="src/utils.cpp" />
 		<Unit filename="src/main.cpp" />
 		<Unit filename="src/version.h" />
 		<Unit filename="src/zconf.h" />

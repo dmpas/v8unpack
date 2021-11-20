@@ -97,7 +97,7 @@ int parse(vector<string> &argv)
 {
 
 	if (argv.size() < 2) {
-		return SHOW_USAGE;
+		return V8UNPACK_SHOW_USAGE;
 	}
 
 	vector<string> filter;
@@ -119,7 +119,7 @@ int list_files(vector<string> &argv)
 int process_list(vector<string> &argv)
 {
 	if (argv.empty()) {
-		return SHOW_USAGE;
+		return V8UNPACK_SHOW_USAGE;
 	}
 
 	vector< vector<string> > commands;
@@ -345,7 +345,7 @@ int main(int argc, char* argv[])
 	}
 
 	int ret = handler(cli_args);
-	if (ret == SHOW_USAGE) {
+	if (ret == V8UNPACK_SHOW_USAGE) {
 		usage(cli_args);
 	}
 	return ret;
