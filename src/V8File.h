@@ -261,9 +261,7 @@ class CV8File
 public:
 
 	int GetData(std::vector<char> &data);
-	int Pack();
 	int LoadFileFromFolder(const std::string &dirname);
-	int SaveFileToFolder(const boost::filesystem::path &directory) const;
 
 	CV8File();
 	virtual ~CV8File() = default;
@@ -331,9 +329,6 @@ int Parse(
 );
 
 int ListFiles(const std::string &filename);
-bool IsV8File(const char *pFileData, uint32_t FileDataSize);
-bool IsV8File(const std::vector<char> &data);
-bool IsV8File16(const char *pFileData, uint32_t FileDataSize);
 bool IsV8File(std::basic_istream<char> &file);
 bool IsV8File16(std::basic_istream<char>& file);
 
