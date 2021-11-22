@@ -260,16 +260,13 @@ class CV8File
 {
 public:
 
-	int GetData(char **DataBufer, uint32_t *DataBuferSize);
 	int GetData(std::vector<char> &data);
 	int Pack();
 	int LoadFileFromFolder(const std::string &dirname);
-	int LoadFile(char *pFileData, uint32_t FileData, bool boolInflate = true, bool UnpackWhenNeed = false);
-	int SaveFileToFolder(const boost::filesystem::path &directiory) const;
+	int SaveFileToFolder(const boost::filesystem::path &directory) const;
 
 	CV8File();
-	explicit CV8File(char *pFileData, bool boolUndeflate = true);
-	virtual ~CV8File();
+	virtual ~CV8File() = default;
 
 	CV8File(const CV8File &src);
 
@@ -280,7 +277,7 @@ private:
 	std::vector<stElemAddr>     ElemsAddrs;
 
 	std::vector<CV8Elem>        Elems;
-	bool                        IsDataPacked;
+	bool                        IsDataPacked = false;
 };
 
 class CV8Elem
@@ -303,7 +300,7 @@ public:
 	CV8Elem(const CV8Elem &src) = default;
 	explicit CV8Elem(const std::string &name);
 	CV8Elem() = default;
-	~CV8Elem();
+	~CV8Elem() = default;
 
 	int           Pack(bool deflate = true);
 	int           SetName(const std::string &ElemName);
@@ -311,12 +308,7 @@ public:
 
 	void Dispose();
 
-	// char               *pHeader = nullptr;
-	// uint32_t            HeaderSize = 0;
-
 	std::vector<char>   header;
-	// char               *pData = nullptr;
-	// uint32_t            DataSize = 0;
 	std::vector<char>   data;
 	CV8File             UnpackedData;
 	bool                IsV8File = false;
@@ -353,6 +345,15 @@ int Inflate(const std::string &in_filename, const std::string &out_filename);
 
 int Deflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_len);
 int Inflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_len);
+
+/**
+ * Пытается распаковать данные. В случае успеха перезаписывает в data.
+ * @param data - данные
+ * @return true - если данные были успешно распакованы
+ *         false - ошибка распаковки: данные повреждены или не упакованы
+ */
+bool
+try_inflate(std::vector<char> &data);
 
 template<typename T>
 void full_copy(std::basic_istream<T> &in_file, std::basic_ostream<T> &out_file)

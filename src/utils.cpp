@@ -403,5 +403,21 @@ int Deflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_l
 
 }
 
+bool try_inflate(std::vector<char> &data)
+{
+	char    *inflated_data = nullptr;
+	uint32_t inflated_data_size = 0;
+
+	auto ret = Inflate(data.data(), &inflated_data, data.size(), &inflated_data_size);
+	if (ret == Z_OK) {
+		data.assign(inflated_data, inflated_data + inflated_data_size);
+		free(inflated_data);
+		return true;
+	}
+	if (inflated_data != nullptr) {
+		free(inflated_data);
+	}
+	return false;
+}
 
 }

@@ -18,6 +18,8 @@ at http://mozilla.org/MPL/2.0/.
 #include <iostream>
 #include <iterator>
 #include <sstream>
+#include <boost/iostreams/device/array.hpp>
+#include <boost/iostreams/stream.hpp>
 
 namespace v8unpack {
 
@@ -31,29 +33,16 @@ int RecursiveUnpack(
 		      bool                        UnpackWhenNeed = false
 );
 
-
-
 	CV8File::CV8File()
 {
     IsDataPacked = true;
 }
-
 
 CV8File::CV8File(const CV8File &src)
     : FileHeader(src.FileHeader), IsDataPacked(src.IsDataPacked)
 {
     ElemsAddrs.assign(src.ElemsAddrs.begin(), src.ElemsAddrs.end());
     Elems.assign(src.Elems.begin(), src.Elems.end());
-}
-
-
-CV8File::CV8File(char *pFileData, bool boolInflate)
-{
-    LoadFile(pFileData, boolInflate);
-}
-
-CV8File::~CV8File()
-{
 }
 
 CV8Elem::CV8Elem(const string &name)
@@ -101,7 +90,6 @@ void CV8Elem::Dispose()
 {
 	IsV8File = false;
 }
-
 
 template<typename format>
 static size_t
@@ -172,8 +160,7 @@ ReadBlockData(const char *pFileData, const typename format::block_header_t &firs
 	return data_size;
 }
 
-
-	template<typename format>
+template<typename format>
 static size_t
 ReadBlockData(std::basic_istream<char> &file, const typename format::block_header_t &firstBlockHeader, char *&pBlockData)
 {
@@ -336,96 +323,6 @@ static int SaveBlockDataToBuffer(char **cur_pos, const char *pBlockData, uint32_
 	return 0;
 }
 
-int CV8File::LoadFile(char *pFileData, uint32_t FileDataSize, bool boolInflate, bool UnpackWhenNeed)
-{
-    if (!pFileData) {
-        return V8UNPACK_ERROR;
-    }
-
-    if (!IsV8File(pFileData, FileDataSize)) {
-        return V8UNPACK_NOT_V8_FILE;
-    }
-
-	typedef Format15 format;
-
-    char *InflateBuffer = nullptr;
-    uint32_t InflateSize = 0;
-
-	auto *pFileHeader = (format::file_header_t*) pFileData;
-
-	memcpy(&FileHeader, pFileData, format::file_header_t::Size());
-	auto pBlockHeader = (format::block_header_t*) &pFileHeader[1];
-
-	format::elem_addr_t *pElemsAddrs = nullptr;
-	auto ElemsAddrsSize = ReadBlockData<Format15>(pFileData, *pBlockHeader, (char*&)pElemsAddrs);
-    auto ElemsNum = ElemsAddrsSize / format::elem_addr_t::Size();
-
-    Elems.clear();
-
-	auto ret = V8UNPACK_OK;
-    for (uint32_t i = 0; i < ElemsNum; i++) {
-
-        if (pElemsAddrs[i].fffffff != format::elem_addr_t::UNDEFINED_VALUE) {
-            ElemsNum = i;
-            break;
-        }
-
-        pBlockHeader = (format::block_header_t*) &pFileData[pElemsAddrs[i].elem_header_addr + format::BASE_OFFSET];
-
-        if (!pBlockHeader->IsCorrect()) {
-            ret = V8UNPACK_HEADER_ELEM_NOT_CORRECT;
-            break;
-        }
-
-		CV8Elem elem;
-		ReadBlockData<Format15>(pFileData, *pBlockHeader, elem.header);
-
-		//080228 Блока данных может не быть, тогда адрес блока данных равен 0x7fffffff
-		if (pElemsAddrs[i].elem_data_addr != format::elem_addr_t::UNDEFINED_VALUE) {
-			pBlockHeader = (format::block_header_t*) &pFileData[pElemsAddrs[i].elem_data_addr + format::BASE_OFFSET];
-			ReadBlockData<Format15>(pFileData, *pBlockHeader, elem.data);
-		}
-
-		elem.UnpackedData.IsDataPacked = false;
-
-		if (boolInflate && IsDataPacked) {
-
-			int inflate_result = Inflate(elem.data.data(), &InflateBuffer, elem.data.size(), &InflateSize);
-
-			if (inflate_result != Z_OK)
-				IsDataPacked = false;
-			else {
-				elem.NeedUnpack = false; // отложенная распаковка не нужна
-
-				elem.data.resize(InflateSize);
-				memcpy(elem.data.data(), InflateBuffer, InflateSize);
-
-				delete [] InflateBuffer;
-				InflateBuffer = nullptr;
-			}
-		}
-
-		if (IsV8File(elem.data)) {
-			ret = elem.UnpackedData.LoadFile(elem.data.data(), elem.data.size(), boolInflate);
-			if (ret)
-				break;
-
-			elem.data.clear();
-			elem.IsV8File = true;
-		}
-
-		Elems.push_back(elem);
-
-	} // for i = ..ElemsNum
-
-	if (InflateBuffer)
-		free(InflateBuffer);
-
-	delete [] pElemsAddrs;
-
-	return ret;
-}
-
 int SaveBlockData(std::basic_ostream<char> &file_out, const std::vector<char> &data, uint32_t PageSize = 0)
 {
 	auto BlockDataSize = data.size();
@@ -484,9 +381,9 @@ int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 
 		boost::filesystem::ifstream src;
 
-		boost::filesystem::path tmp_path = elem_path.parent_path() / ".v8unpack.tmp";
-		boost::filesystem::path inf_path = elem_path.parent_path() / ".v8unpack.inf";
-		boost::filesystem::path src_path;
+		boost::filesystem::path src_path,
+			tmp_path = elem_path.parent_path() / ".v8unpack.tmp",
+			inf_path = elem_path.parent_path() / ".v8unpack.inf";
 
 		if (NeedUnpack) {
 			/* Временный файл */
@@ -543,53 +440,32 @@ int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 			boost::system::error_code error;
 			boost::filesystem::rename(src_path, elem_path, error);
 		}
-
-
 	}
 	else {
-
 		/* Имѣем полное право помѣстить файл в память */
 
-		char *source_data = nullptr;
-		auto uDataSize = ReadBlockData<format>(file, header, source_data);
+		vector<char> source_data;
+		ReadBlockData<format>(file, header, source_data);
+		try_inflate(source_data);
 
-		char *out_data = nullptr;
-		uint32_t out_data_size = 0;
-
-		ret = Inflate(source_data, &out_data, uDataSize, &out_data_size);
-		if (ret) {
-
-			// файл не распаковывается - записываем, как есть
-			out_data = source_data;
-			out_data_size = uDataSize;
-
-			source_data = nullptr;
-		}
-		delete[] source_data;
+		boost::iostreams::stream<boost::iostreams::array_source> src(source_data.data(), source_data.size());
 
 		bool unpacked_as_V8 = false;
-		if (IsV8File(out_data, uDataSize)) {
+		if (IsV8File(src)) {
 			/* Это 8-файл - раскладываем его*/
-
-			CV8File elem;
-			auto unpack_result = elem.LoadFile(out_data, out_data_size, false, false);
-
+			vector<string> empty_filter;
+			auto unpack_result = RecursiveUnpack(elem_path.string(), src, empty_filter, false, false);
 			if (unpack_result == 0) {
-				elem.SaveFileToFolder(elem_path.string());
-				elem.Dispose();
+				src.close();
 				unpacked_as_V8 = true;
 			}
 		}
 		if (!unpacked_as_V8) {
-			/* Тупо пишем содержимое в цѣлевой файл*/
-
+			/* Просто пишем содержимое в цѣлевой файл*/
+			src.close();
 			boost::filesystem::ofstream out(elem_path, std::ios_base::binary);
-			out.write(out_data, out_data_size);
-
+			out.write(source_data.data(), source_data.size());
 		}
-
-		free(out_data);
-
 	}
 
 	return ret;
@@ -661,6 +537,7 @@ static int recursive_unpack(const string& directory, basic_istream<char>& file, 
 
 	return ret;
 }
+#pragma clang diagnostic pop
 
 
 template<typename format>
@@ -838,14 +715,22 @@ int UnpackToFolder(const std::string &filename_in, const std::string &dirname, c
 template <typename format>
 static bool checkV8File(std::basic_istream<char> &file)
 {
+	auto offset = file.tellg();
+
+	file.seekg(0, file.end);
+	auto file_size = file.tellg();
+
+	if (file_size < format::BASE_OFFSET) {
+		return false;
+	}
+
+	file.seekg(format::BASE_OFFSET);
+
 	typename format::file_header_t FileHeader;
 	typename format::block_header_t BlockHeader;
 
 	memset(&BlockHeader, 0, BlockHeader.Size());
 
-	std::ifstream::pos_type offset = file.tellg();
-
-	file.seekg(format::BASE_OFFSET);
 	file.read((char*)& FileHeader, FileHeader.Size());
 	file.read((char*)& BlockHeader, BlockHeader.Size());
 
@@ -1068,21 +953,19 @@ int Parse(const std::string &filename_in, const std::string &dirname, const std:
     return ret;
 }
 
-int CV8File::SaveFileToFolder(const boost::filesystem::path &directiory) const
+int CV8File::SaveFileToFolder(const boost::filesystem::path &directory) const
 {
-
-    int ret = 0;
-
-    if (!boost::filesystem::exists(directiory)) {
-        ret = !boost::filesystem::create_directory(directiory);
+    if (!boost::filesystem::exists(directory)) {
+        auto ret = !boost::filesystem::create_directory(directory);
         if (ret && errno == ENOENT) {
-            std::cerr << "SaveFileToFolder. Error in creating directory `" << directiory << "` !" << std::endl;
+            std::cerr << "SaveFileToFolder. Error in creating directory `" << directory << "` !" << std::endl;
             return ret;
         }
     }
-    ret = 0;
 
-    bool print_progress = true;
+	int ret = V8UNPACK_OK;
+
+	bool print_progress = true;
     uint32_t one_percent = Elems.size() / 50;
     if (print_progress && one_percent) {
         std::cout << "Progress (50 points): " << std::flush;
@@ -1103,7 +986,7 @@ int CV8File::SaveFileToFolder(const boost::filesystem::path &directiory) const
 
         string ElemName = elem->GetName();
 
-        boost::filesystem::path filename_out(directiory / ElemName);
+        boost::filesystem::path filename_out(directory / ElemName);
 
         if (!elem->IsV8File) {
             boost::filesystem::ofstream file_out(filename_out, std::ios_base::binary);
@@ -1358,10 +1241,7 @@ int CV8Elem::Pack(bool deflate)
 
 	} else {
 
-		char *DataBuffer = nullptr;
-		uint32_t DataBufferSize = 0;
-
-		UnpackedData.GetData(&DataBuffer, &DataBufferSize);
+		UnpackedData.GetData(data);
 		UnpackedData.Dispose();
 
 		if (deflate) {
@@ -1369,7 +1249,7 @@ int CV8Elem::Pack(bool deflate)
 			char *DeflateBuffer = nullptr;
 			uint32_t DeflateSize = 0;
 
-			ret = Deflate(DataBuffer, &DeflateBuffer, DataBufferSize, &DeflateSize);
+			ret = Deflate(data.data(), &DeflateBuffer, data.size(), &DeflateSize);
 			if (ret) {
 				return ret;
 			}
@@ -1379,14 +1259,7 @@ int CV8Elem::Pack(bool deflate)
 
 			delete [] DeflateBuffer;
 
-		} else {
-
-			data.resize(DataBufferSize);
-			memcpy(data.data(), DataBuffer, DataBufferSize);
-
 		}
-
-		delete [] DataBuffer;
 
 		IsV8File = false;
 	}
@@ -1436,16 +1309,13 @@ int CV8File::Pack()
             DeflateBuffer = nullptr;
 
         } else {
-            elem.UnpackedData.GetData(&DataBuffer, &DataBufferSize);
+			elem.UnpackedData.GetData(elem.data);
+			elem.IsV8File = false;
 
-            ret = Deflate(DataBuffer, &DeflateBuffer, DataBufferSize, &DeflateSize);
-            if (ret)
-                return ret;
-
-			delete [] DataBuffer;
-			DataBuffer = nullptr;
-
-            elem.IsV8File = false;
+			ret = Deflate(elem.data.data(), &DeflateBuffer, elem.data.size(), &DeflateSize);
+			if (ret != Z_OK) {
+				return ret;
+			}
 
             elem.data.resize(DeflateSize);
             memcpy(elem.data.data(), DeflateBuffer, DeflateSize);
@@ -1466,14 +1336,12 @@ int CV8File::GetData(std::vector<char> &data)
 {
 	typedef Format15 format;
 
-	uint32_t ElemsNum = Elems.size();
-
-	auto NeedDataBufferSize = format::file_header_t::Size();
+	auto ElemsNum = Elems.size();
 
 	// заголовок блока и данные блока - адреса элементов с учетом минимальной страницы 512 байт
-	NeedDataBufferSize += format::block_header_t::Size() + MAX(format::elem_addr_t::Size() * ElemsNum, format::DEFAULT_PAGE_SIZE);
-
-	data.resize(NeedDataBufferSize);
+	auto NeedDataBufferSize = format::file_header_t::Size()
+			+ format::block_header_t::Size()
+			+ MAX(format::elem_addr_t::Size() * ElemsNum, format::DEFAULT_PAGE_SIZE);
 
 	for (auto &elem : Elems) {
 
@@ -1486,6 +1354,8 @@ int CV8File::GetData(std::vector<char> &data)
 		}
 		NeedDataBufferSize += format::block_header_t::Size() + MAX(elem.data.size(), format::DEFAULT_PAGE_SIZE);
 	}
+
+	data.resize(NeedDataBufferSize);
 
 	// Создаем и заполняем данные по адресам элементов
 	vector<format::elem_addr_t> pTempElemsAddrs(ElemsNum);
@@ -1523,19 +1393,6 @@ int CV8File::GetData(std::vector<char> &data)
 		SaveBlockDataToBuffer<format>(&cur_pos, elem.data.data(), elem.data.size());
 	}
 
-	return V8UNPACK_OK;
-}
-
-int CV8File::GetData(char **DataBuffer, uint32_t *DataBufferSize)
-{
-	std::vector<char> d;
-	auto ret = GetData(d);
-	if (ret != V8UNPACK_OK) {
-		return ret;
-	}
-
-	*DataBuffer = nullptr;
-	*DataBufferSize = d.size();
 	return V8UNPACK_OK;
 }
 
