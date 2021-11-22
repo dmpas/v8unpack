@@ -92,7 +92,7 @@ struct stElemAddr
 	uint32_t elem_data_addr;
 	uint32_t fffffff; //всегда 0x7fffffff ?
 
-	static uint32_t Size()
+	static size_t Size()
 	{
 		return 4 + 4 + 4;
 	}
@@ -107,7 +107,7 @@ struct stElemAddr64
 	uint64_t elem_data_addr;
 	uint64_t fffffff; //всегда 0xffffffffffffffff ?
 
-	static uint32_t Size()
+	static size_t Size()
 	{
 		return 8 + 8 + 8;
 	}
@@ -131,7 +131,7 @@ struct stBlockHeader
 	static stBlockHeader create(uint32_t block_data_size, uint32_t page_size, uint32_t next_page_addr);
 	static stBlockHeader create(uint32_t block_data_size, uint32_t page_size);
 
-	static uint32_t Size()
+	static size_t Size()
 	{
 		return 1 + 1 + 8 + 1 + 8 + 1 + 8 + 1 + 1 + 1;
 	};
@@ -190,7 +190,7 @@ struct stBlockHeader64
 	static stBlockHeader64 create(uint64_t block_data_size, uint64_t page_size, uint64_t next_page_addr);
 	static stBlockHeader64 create(uint64_t block_data_size, uint64_t page_size);
 
-	static uint32_t Size()
+	static size_t Size()
 	{
 		return 1 + 1 + 16 + 1 + 16 + 1 + 16 + 1 + 1 + 1; // 55 теперь
 	};
@@ -261,6 +261,7 @@ class CV8File
 public:
 
 	int GetData(char **DataBufer, uint32_t *DataBuferSize);
+	int GetData(std::vector<char> &data);
 	int Pack();
 	int LoadFileFromFolder(const std::string &dirname);
 	int LoadFile(char *pFileData, uint32_t FileData, bool boolInflate = true, bool UnpackWhenNeed = false);
@@ -293,7 +294,7 @@ public:
 		uint32_t res; // всегда 0x000000?
 		//изменяемая длина имени блока
 		//после имени uint32_t res; // всегда 0x000000?
-		static uint32_t Size()
+		static size_t Size()
 		{
 			return 8 + 8 + 4;
 		};
@@ -301,7 +302,7 @@ public:
 
 	CV8Elem(const CV8Elem &src) = default;
 	explicit CV8Elem(const std::string &name);
-	CV8Elem();
+	CV8Elem() = default;
 	~CV8Elem();
 
 	int           Pack(bool deflate = true);
@@ -310,14 +311,18 @@ public:
 
 	void Dispose();
 
-	char               *pHeader = nullptr;
-	uint32_t            HeaderSize = 0;
-	char               *pData = nullptr;
-	uint32_t            DataSize = 0;
+	// char               *pHeader = nullptr;
+	// uint32_t            HeaderSize = 0;
+
+	std::vector<char>   header;
+	// char               *pData = nullptr;
+	// uint32_t            DataSize = 0;
+	std::vector<char>   data;
 	CV8File             UnpackedData;
 	bool                IsV8File = false;
 	bool                NeedUnpack = false;
-
+private:
+	void resizeHeader(size_t newSize);
 };
 
 
@@ -327,14 +332,6 @@ int SaveBlockData(std::basic_ostream<char> &file_out, const char *pBlockData, ui
 int SaveBlockData(std::basic_ostream<char> &file_out, std::basic_istream<char> &file_in, uint32_t BlockDataSize, uint32_t PageSize = 512);
 int UnpackToFolder(const std::string &filename, const std::string &dirname, const std::string &block_name, bool print_progress = false);
 
-int UnpackToDirectoryNoLoad(
-		const std::string                &directory,
-		      std::basic_istream<char>   &file,
-		const std::vector<std::string>   &filter,
-		      bool                       boolInflate = true,
-		      bool                       UnpackWhenNeed = false
-);
-
 int Parse(
 		const std::string                &filename,
 		const std::string                &dirname,
@@ -343,6 +340,7 @@ int Parse(
 
 int ListFiles(const std::string &filename);
 bool IsV8File(const char *pFileData, uint32_t FileDataSize);
+bool IsV8File(const std::vector<char> &data);
 bool IsV8File16(const char *pFileData, uint32_t FileDataSize);
 bool IsV8File(std::basic_istream<char> &file);
 bool IsV8File16(std::basic_istream<char>& file);
