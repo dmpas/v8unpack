@@ -597,7 +597,7 @@ static int unpack_to_folder(boost::filesystem::ifstream &file, const std::string
 		file_out.close();
 	}
 
-	auto pElemsAddrs = ReadElementsAllocationTable<typename format>(file);
+	auto pElemsAddrs = ReadElementsAllocationTable<format>(file);
 	auto ElemsNum = pElemsAddrs.size();
 
 	for (uint32_t i = 0; i < ElemsNum; i++) {
