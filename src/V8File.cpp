@@ -28,8 +28,8 @@ int RecursiveUnpack(
 		const std::string                &directory,
 		      std::basic_istream<char>   &file,
 		const std::vector<std::string>   &filter,
-		      bool                        boolInflate = true,
-		      bool                        UnpackWhenNeed = false
+		      bool                        boolInflate,
+		      bool                        UnpackWhenNeed
 );
 
 CV8File::CV8File()
@@ -228,6 +228,18 @@ ReadBlockData(std::basic_istream<char> &file, const typename format::block_heade
 	return V8UNPACK_OK;
 }
 
+template<typename format>
+static size_t
+DumpBlockData(std::basic_istream<char> &file, const typename format::block_header_t &firstBlockHeader, const boost::filesystem::path &path)
+{
+	boost::filesystem::ofstream out;
+	out.open(path, std::ios_base::binary);
+	auto result = ReadBlockData<format>(file, firstBlockHeader, out);
+	out.close();
+	return result;
+}
+
+
 template<typename format, typename in_stream_t, typename out_stream_t>
 static size_t
 ReadBlockData(in_stream_t &file, out_stream_t &out)
@@ -334,7 +346,7 @@ void CV8File::Dispose()
 }
 
 // Нѣкоторый условный предѣл
-const size_t SmartLimit = 200 *1024;
+const size_t SmartLimit = 00 *1024;
 const size_t SmartUnpackedLimit = 20 *1024*1024;
 
 /*
@@ -361,66 +373,39 @@ int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 		/* 1) Имѣем дѣло с условно большими данными - работаем через промежуточный файл */
 		/* 2) Не нужна распаковка - пишем прямо в файл-приёмник */
 
-		boost::filesystem::ifstream src;
-
 		boost::filesystem::path src_path,
 			tmp_path = elem_path.parent_path() / ".v8unpack.tmp",
 			inf_path = elem_path.parent_path() / ".v8unpack.inf";
 
+		DumpBlockData<format>(file, header, tmp_path);
 		if (NeedUnpack) {
 			/* Временный файл */
 
-			boost::filesystem::ofstream out;
-
-			out.open(tmp_path, std::ios_base::binary);
-			ReadBlockData<format>(file, header, out);
-			out.close();
-
-			out.open(inf_path, std::ios_base::binary);
-			boost::filesystem::ifstream inf(tmp_path, std::ios_base::binary);
-
-			ret = Inflate(inf, out);
-
-			if (ret) {
-				// Файл не распаковывается - записываем, как есть
-				inf.seekg(0, std::ios_base::beg);
-				full_copy(inf, out);
-			}
-
-			inf.close();
+			try_inflate(tmp_path, inf_path);
 			boost::filesystem::remove(tmp_path);
-			out.close();
 
 			src_path = inf_path;
-
 		}
 		else {
 			/* Конечный файл */
-			boost::filesystem::ofstream out;
-			out.open(tmp_path, std::ios_base::binary);
-			ReadBlockData<format>(file, header, out);
-			out.close();
-
 			src_path = tmp_path;
 		}
 
-		src.open(src_path, std::ios_base::binary);
+		boost::filesystem::ifstream src(src_path, std::ios_base::binary);
 
 		bool unpacked_as_V8 = false;
-
 		if (IsV8File(src)) {
-			vector<string> empty_filter;
-			auto unpack_result = RecursiveUnpack(elem_path.string(), src, empty_filter, false, false);
-			if (unpack_result == 0) {
-				src.close();
-				boost::filesystem::remove(src_path);
+			auto unpack_result = RecursiveUnpack(elem_path.string(), src, {}, false, false);
+			if (unpack_result == V8UNPACK_OK) {
 				unpacked_as_V8 = true;
 			}
 		}
+		src.close();
 		if (!unpacked_as_V8) {
-			src.close();
 			boost::system::error_code error;
 			boost::filesystem::rename(src_path, elem_path, error);
+		} else {
+			boost::filesystem::remove(src_path);
 		}
 	}
 	else {
@@ -435,16 +420,14 @@ int SmartUnpack(std::basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 		bool unpacked_as_V8 = false;
 		if (IsV8File(src)) {
 			/* Это 8-файл - раскладываем его*/
-			vector<string> empty_filter;
-			auto unpack_result = RecursiveUnpack(elem_path.string(), src, empty_filter, false, false);
-			if (unpack_result == 0) {
-				src.close();
+			auto unpack_result = RecursiveUnpack(elem_path.string(), src, {}, false, false);
+			if (unpack_result == V8UNPACK_OK) {
 				unpacked_as_V8 = true;
 			}
 		}
+		src.close();
 		if (!unpacked_as_V8) {
 			/* Просто пишем содержимое в цѣлевой файл*/
-			src.close();
 			boost::filesystem::ofstream out(elem_path, std::ios_base::binary);
 			out.write(source_data.data(), source_data.size());
 		}
@@ -859,7 +842,7 @@ int SaveBlockData(std::basic_ostream<char> &file_out, const char *pBlockData, ui
 	return 0;
 }
 
-int RecursiveUnpack(const string &directory, basic_istream<char> &file, const vector<string>  &filter, bool boolInflate, bool UnpackWhenNeed)
+int RecursiveUnpack(const string &directory, basic_istream<char> &file, const vector<string> &filter, bool boolInflate, bool UnpackWhenNeed)
 {
 	if (!IsV8File(file)) {
 		return V8UNPACK_NOT_V8_FILE;
@@ -883,7 +866,7 @@ int Parse(const std::string &filename_in, const std::string &dirname, const std:
         return -1;
     }
 
-    ret = RecursiveUnpack(dirname, file_in, filter);
+    ret = RecursiveUnpack(dirname, file_in, filter, true, false);
 
     if (ret == V8UNPACK_NOT_V8_FILE) {
         std::cerr << "Parse. `" << filename_in << "` is not V8 file!" << std::endl;

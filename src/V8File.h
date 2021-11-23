@@ -348,7 +348,37 @@ int Inflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_l
  *         false - ошибка распаковки: данные повреждены или не упакованы
  */
 bool
-try_inflate(std::vector<char> &data);
+try_inflate(
+		std::vector<char> &data
+		);
+
+/**
+ * Пытается распаковать данные. В случае успеха пишет распакованные данные в выходной поток.
+ * В случае ошибки копирует исходный поток в выходной.
+ * @param source - поток исходных данных
+ * @param dest - поток результата
+ * @return true - если данные были успешно распакованы
+ *         false - ошибка распаковки: данные повреждены или не упакованы
+ */
+bool
+try_inflate(
+		std::istream &source,
+		std::ostream &dest
+		);
+
+/**
+ * Пытается распаковать данные. В случае успеха пишет распакованные данные в выходной файл.
+ * В случае ошибки копирует исходный поток в выходной.
+ * @param source - путь к исходному файлу
+ * @param dest - путь к результирующему файлу
+ * @return true - если данные были успешно распакованы
+ *         false - ошибка распаковки: данные повреждены или не упакованы
+ */
+bool
+try_inflate(
+		const boost::filesystem::path &source,
+		const boost::filesystem::path &dest
+		);
 
 template<typename T>
 void full_copy(std::basic_istream<T> &in_file, std::basic_ostream<T> &out_file)

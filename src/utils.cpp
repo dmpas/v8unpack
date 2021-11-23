@@ -420,4 +420,43 @@ bool try_inflate(std::vector<char> &data)
 	return false;
 }
 
+bool
+try_inflate(std::istream &source, std::ostream &dest)
+{
+	auto gpos = source.tellg();
+	auto ppos = dest.tellp();
+
+	auto ret = Inflate(source, dest);
+
+	if (ret != Z_OK) {
+		// Файл не распаковывается - записываем, как есть
+		source.seekg(gpos, std::ios_base::beg);
+		dest.seekp(ppos, std::ios_base::beg);
+
+		full_copy(source, dest);
+
+		return false;
+	}
+
+	return true;
+}
+
+bool
+try_inflate(const boost::filesystem::path &source, const boost::filesystem::path &dest)
+{
+	boost::filesystem::ifstream inf;
+	boost::filesystem::ofstream out;
+
+	inf.open(source, std::ios_base::binary);
+	out.open(dest, std::ios_base::binary);
+
+	auto result = try_inflate(inf, out);
+
+	inf.close();
+	out.close();
+
+	return result;
+}
+
+
 }
