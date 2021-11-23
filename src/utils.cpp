@@ -444,18 +444,10 @@ try_inflate(std::istream &source, std::ostream &dest)
 bool
 try_inflate(const boost::filesystem::path &source, const boost::filesystem::path &dest)
 {
-	boost::filesystem::ifstream inf;
-	boost::filesystem::ofstream out;
+	boost::filesystem::ifstream inf(source, std::ios_base::binary);
+	boost::filesystem::ofstream out(dest, std::ios_base::binary);
 
-	inf.open(source, std::ios_base::binary);
-	out.open(dest, std::ios_base::binary);
-
-	auto result = try_inflate(inf, out);
-
-	inf.close();
-	out.close();
-
-	return result;
+	return try_inflate(inf, out);
 }
 
 
