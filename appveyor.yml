@@ -18,7 +18,7 @@ environment:
   BOOST_LIBRARYDIR: C:\Libraries\boost_1_60_0\lib32-msvc-14.0
   BOOST_INCLUDEDIR: C:\Libraries\boost_1_60_0
 install:
-- sh: sudo apt install libboost-dev zlib1g-dev
+- sh: sudo apt install libboost-filesystem-dev libboost-iostreams-dev libboost-system-dev zlib1g-dev
 - cmd: >-
     appveyor DownloadFile https://github.com/madler/zlib/archive/v1.2.8.zip -FileName zlib-1.2.8.zip
 
