@@ -33,7 +33,7 @@ if(MSVC)
 
 endif()
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 add_executable (v8unpack ${V8UNPACK_SOURCES} ${V8UNPACK_HEADERS} ${RC_FILE})
 
 add_definitions (-DBOOST_ALL_NO_LIB)
