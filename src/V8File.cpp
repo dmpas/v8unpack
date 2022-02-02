@@ -18,12 +18,12 @@ at http://mozilla.org/MPL/2.0/.
 #include "V8File.h"
 #include "VersionFile.h"
 #include <iostream>
-#include <iterator>
 #include <sstream>
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <utility>
 #include <memory>
+#include <boost/filesystem/fstream.hpp>
 
 namespace v8unpack {
 
