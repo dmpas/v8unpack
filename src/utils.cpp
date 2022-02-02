@@ -7,6 +7,7 @@ at http://mozilla.org/MPL/2.0/.
 #include "V8File.h"
 #include <iostream>
 #include "zlib.h"
+#include <boost/filesystem/fstream.hpp>
 
 #define CHUNK 16384
 #ifndef DEF_MEM_LEVEL
