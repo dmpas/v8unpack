@@ -22,7 +22,7 @@ at http://mozilla.org/MPL/2.0/.
 #include <iostream>
 #include <algorithm>
 #include <sstream>
-#include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
 
 using namespace std;
 using namespace v8unpack;
