@@ -23,6 +23,7 @@ at http://mozilla.org/MPL/2.0/.
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <utility>
+#include <memory>
 
 namespace v8unpack {
 

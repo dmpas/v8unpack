@@ -322,7 +322,7 @@ const char placeholder216[] = {
 '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00',
 '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'};
 
-std::basic_ostream<char>& __CLRCALL_OR_CDECL
+std::basic_ostream<char>&
 Format16::placeholder(std::basic_ostream<char>& basicOstream) {
 	for (auto c: placeholder216) {
 		basicOstream << c;

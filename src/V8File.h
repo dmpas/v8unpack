@@ -244,7 +244,7 @@ struct Format15
 	static const uint32_t DEFAULT_PAGE_SIZE = 512;
 
 	template <class _Elem, class _Traits>
-	static std::basic_ostream<_Elem, _Traits>& __CLRCALL_OR_CDECL
+	static std::basic_ostream<_Elem, _Traits>&
 	placeholder(std::basic_ostream<_Elem, _Traits>& _Ostr) {
 		return _Ostr;
 	}
@@ -260,7 +260,7 @@ struct Format16
 	static const std::streamoff BASE_OFFSET = 0x1359;
 	static const uint64_t DEFAULT_PAGE_SIZE = 512;
 
-	static std::basic_ostream<char>& __CLRCALL_OR_CDECL
+	static std::basic_ostream<char>&
 	placeholder(std::basic_ostream<char>& _Ostr);
 };
 
