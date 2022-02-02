@@ -8,7 +8,7 @@ for:
     only:
       - image: Ubuntu1604
   init:
-    - export CXX=g++9 CC=gcc-9
+    - export CXX=g++-9 CC=gcc-9
 pull_requests:
   do_not_increment_build_number: true
 clone_depth: 1
