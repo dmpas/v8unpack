@@ -1,5 +1,14 @@
 version: 3.0.43.{build}
-image: Visual Studio 2015
+image:
+  - Visual Studio 2015
+  - Ubuntu1604
+for:
+-
+  matrix:
+    only:
+      - image: Ubuntu1604
+  init:
+    - export CXX=g++9 CC=gcc-9
 pull_requests:
   do_not_increment_build_number: true
 clone_depth: 1
@@ -9,6 +18,7 @@ environment:
   BOOST_LIBRARYDIR: C:\Libraries\boost_1_60_0\lib32-msvc-14.0
   BOOST_INCLUDEDIR: C:\Libraries\boost_1_60_0
 install:
+- sh: apt install libboost-dev
 - cmd: >-
     appveyor DownloadFile https://github.com/madler/zlib/archive/v1.2.8.zip -FileName zlib-1.2.8.zip
 
@@ -36,7 +46,8 @@ build_script:
     cmake -G "Visual Studio 14" -DBOOST_ROOT="%BOOST_ROOT%" -DBOOST_LIBRARYDIR="%BOOST_LIBRARYDIR%" -DBOOST_INCLUDEDIR="%BOOST_INCLUDEDIR%" -DZLIB_LIBRARY=%APPVEYOR_BUILD_FOLDER%\zlib-1.2.8\build\Release\zlibstatic.lib -DZLIB_INCLUDE_DIR=%APPVEYOR_BUILD_FOLDER%\zlib-1.2.8 .
 
     cmake --build . --config Release
-
+- sh: cmake .
+- cmake --build . --config Release
 after_build:
 - cmd: >-
     SET PATH=%PATH%;"C:/Program Files (x86)/WiX Toolset v3.11/bin"
