@@ -59,7 +59,7 @@ after_build:
 
     choco pack
 
-- sh: debuild -us -uc
+- sh: debuild -us -uc && mv -t . ../v8unpack*.deb
 
 artifacts:
 - path: Release\*.exe
@@ -67,6 +67,6 @@ artifacts:
 - path: v8unpack*.nupkg
 - path: v8unpack-*.msi
   name: installer
-- path: ../*.deb
+- path: v8unpack*.deb
   name: installer-deb
 deploy: off
