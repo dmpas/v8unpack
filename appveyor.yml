@@ -1,7 +1,7 @@
 version: 3.0.43.{build}
 image:
-  - Visual Studio 2015
   - Ubuntu1604
+  - Visual Studio 2015
 for:
 -
   matrix:
@@ -67,4 +67,6 @@ artifacts:
 - path: v8unpack*.nupkg
 - path: v8unpack-*.msi
   name: installer
+- path: ../*.deb
+  name: installer-deb
 deploy: off
