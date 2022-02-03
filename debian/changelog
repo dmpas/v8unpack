@@ -1,3 +1,21 @@
+v8unpack (3.0.43-2~bionic) xenial; urgency=low
+
+  * Format 8.3.16 support
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Thu, 03 Feb 2022 10:19:50 +0300
+
+v8unpack (3.0.43-2~xenial) xenial; urgency=low
+
+  * Format 8.3.16 support
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Thu, 03 Feb 2022 10:19:50 +0300
+
+v8unpack (3.0.43-2~trusty) xenial; urgency=low
+
+  * Format 8.3.16 support
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Thu, 03 Feb 2022 10:19:50 +0300
+
 v8unpack (3.0.40-2~xenial) xenial; urgency=low
 
   * Fixed build bug
