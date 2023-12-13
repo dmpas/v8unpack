@@ -29,6 +29,19 @@ namespace v8unpack {
 
 using namespace std;
 
+static
+bool endsWithIgnoreCase(const string &str, const string &substr) {
+	if (str.size() >= substr.size()) {
+		auto last = str.substr(str.size() - substr.size(), substr.size());
+		transform(last.begin(), last.end(), last.begin(), [](unsigned char c){ return toupper(c); });
+
+		if (last.compare(substr) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 int RecursiveUnpack(
 		const string                &directory,
 		      basic_istream<char>   &file,
@@ -1098,10 +1111,16 @@ int BuildCfFile(const string &in_dirname, const string &out_filename, bool dont_
 		return V8UNPACK_SOURCE_DOES_NOT_EXIST;
 	}
 
-	int compatibility = directory_container_compatibility(in_dirname);
+	// Файлы с форматом строго 15-й версии
+	auto strict15 = endsWithIgnoreCase(out_filename, ".EPF")
+			|| endsWithIgnoreCase(out_filename, ".ERF");
 
-	if (compatibility >= VersionFile::COMPATIBILITY_V80316) {
-		return recursive_pack<Format16>(in_dirname, out_filename, dont_deflate);
+	if (!strict15) {
+		// проверим формат на основании совместимости в файле version
+		int compatibility = directory_container_compatibility(in_dirname);
+		if (compatibility >= VersionFile::COMPATIBILITY_V80316) {
+			return recursive_pack<Format16>(in_dirname, out_filename, dont_deflate);
+		}
 	}
 
 	return recursive_pack<Format15>(in_dirname, out_filename, dont_deflate);
