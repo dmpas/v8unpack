@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>v8unpack</id>
-    <version>3.0.43</version>
+    <version>3.0.44</version>
     <packageSourceUrl>https://github.com/e8tools/v8unpack</packageSourceUrl>
     <title>v8unpack</title>
     <authors>Denis Demidov, Sergey Batanov, Sergey Rudakov</authors>
