@@ -18,7 +18,7 @@ for:
   - "(cd ../vcpkg && git pull && ./bootstrap-vcpkg.sh)"
   - export VCPKG_DIR=`dirname $(pwd)/../vcpkg/vcpkg`
   install:
-  - sudo apt update -q -y
+  #- sudo apt update -q -y
   - sudo apt install -y debhelper build-essential devscripts fakeroot
   - ../vcpkg/vcpkg install ${VCPKG_LIBS}
   build_script:
@@ -33,6 +33,7 @@ for:
   artifacts:
   - path: v8unpack*.deb
     name: installer-deb
+
 -
   matrix:
     only:
@@ -87,4 +88,10 @@ for:
   - path: v8unpack*.nupkg
   - path: v8unpack-*.msi
     name: installer
-deploy: off
+deploy:
+  provider: Webhook
+  url:
+    secure: OMGP9R1895abhSAril6yAqZ6JBQDXJQ5k0Gz7MBBHuC0ry1wLuPyIbbvwSIng8123oqL87jOvs+X1FaaYab7Lg==
+  authorization:
+    secure: mOYmIK7sZDIWSIRnN3gTg4CeGQer1BT9ZWWf3pJJPN7nJPqAlJXVyvmvAOV9vg0m0VAbUfbaSGbC2ierOkVvzQ==
+  request_timeout: 5
