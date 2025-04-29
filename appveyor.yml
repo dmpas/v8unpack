@@ -12,6 +12,7 @@ for:
       - image: Ubuntu1604
   environment:
     VCPKG_LIBS: boost-iostreams boost-filesystem boost-system zlib
+    DEPLOY_PLATFORM_ID: ubuntu16
   init:
   - export CXX=g++-9 CC=gcc-9
   - if [ ! -d ../vcpkg ]; then git clone https://github.com/microsoft/vcpkg.git ../vcpkg ; fi
@@ -32,7 +33,6 @@ for:
   - dpkg-buildpackage -uc -us
   artifacts:
   - path: v8unpack*.deb
-    name: installer-deb
 
 -
   matrix:
@@ -43,6 +43,7 @@ for:
     BOOST_ROOT: C:\Libraries\boost_1_60_0
     BOOST_LIBRARYDIR: C:\Libraries\boost_1_60_0\lib32-msvc-14.0
     BOOST_INCLUDEDIR: C:\Libraries\boost_1_60_0
+    DEPLOY_PLATFORM_ID: win
   install:
   - cmd: >-
       appveyor DownloadFile https://github.com/madler/zlib/archive/v1.2.8.zip -FileName zlib-1.2.8.zip
