@@ -33,6 +33,7 @@ for:
   - dpkg-buildpackage -uc -us
   artifacts:
   - path: v8unpack*.deb
+    name: v8unpack.deb
 
 -
   matrix:
@@ -85,10 +86,11 @@ for:
 
   artifacts:
   - path: Release\*.exe
-    name: v8unpack
+    name: v8unpack.exe
   - path: v8unpack*.nupkg
+    name: v8unpack.nupkg
   - path: v8unpack-*.msi
-    name: installer
+    name: v8unpack.msi
 deploy:
   provider: Webhook
   url:
