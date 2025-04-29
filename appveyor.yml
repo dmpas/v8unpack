@@ -11,7 +11,7 @@ for:
     only:
       - image: Ubuntu1604
   environment:
-    VCPKG_LIBS: boost-filesystem boost-system zlib
+    VCPKG_LIBS: boost-iostreams boost-filesystem boost-system zlib
   init:
   - export CXX=g++-9 CC=gcc-9
   - if [ ! -d ../vcpkg ]; then git clone https://github.com/microsoft/vcpkg.git ../vcpkg ; fi
