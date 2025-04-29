@@ -22,7 +22,7 @@ for:
   - sudo apt install -y debhelper build-essential devscripts fakeroot
   - ../vcpkg/vcpkg install ${VCPKG_LIBS}
   build_script:
-  - mkdir build && cd build && cmake -DCMAKE_TOOLCHAIN_FILE="${VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake"
+  - mkdir build && cd build && cmake -DCMAKE_TOOLCHAIN_FILE="${VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake" ..
   - cmake --build . --config Release
   - cd ..
   cache:
