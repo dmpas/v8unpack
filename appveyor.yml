@@ -14,7 +14,7 @@ for:
       - image: Visual Studio 2015
   environment:
     VCPKG_LIBS: boost-iostreams boost-filesystem boost-system zlib
-    DEPLOY_PLATFORM_ID: ubuntu16
+    DEPLOY_PLATFORM_ID: ubuntu
   init:
   - export CXX=g++-9 CC=gcc-9
   - if [ ! -d ../vcpkg ]; then git clone https://github.com/microsoft/vcpkg.git ../vcpkg ; fi
