@@ -1,0 +1,10 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: v8unpack
+Source: https://github.com/e8tools/v8unpack 
+
+Files: *
+Copyright: 2008       Denis Demidov 
+           2014-2022  Sergey Batanov <sergey.batanov@dmpas.ru>
+           2019-2020  fishca <fishcaroot@gmail.com>
+License: Mozilla Public License 2.0
+

@@ -1,0 +1,96 @@
+v8unpack (3.0.43) noble; urgency=low
+
+  * Format 8.3.16 support
+  * Minor fixes
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Sat, 03 May 2025 11:50:50 +0300
+
+v8unpack (3.0.43-2~bionic) xenial; urgency=low
+
+  * Format 8.3.16 support
+  * Minor fixes
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Thu, 03 Feb 2022 10:19:50 +0300
+
+v8unpack (3.0.43-2~xenial) xenial; urgency=low
+
+  * Format 8.3.16 support
+  * Minor fixes
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Thu, 03 Feb 2022 10:19:50 +0300
+
+v8unpack (3.0.43-2~trusty) xenial; urgency=low
+
+  * Format 8.3.16 support
+  * Minor fixes
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Thu, 03 Feb 2022 10:19:50 +0300
+
+v8unpack (3.0.40-2~xenial) xenial; urgency=low
+
+  * Fixed build bug
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Fri, 17 Mar 2017 22:44:00 +0300
+
+v8unpack (3.0.40-2~vivid) vivid; urgency=low
+
+  * Fixed build bug
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Fri, 17 Mar 2017 22:44:00 +0300
+
+v8unpack (3.0.40-2~trusty) trusty; urgency=low
+
+  * Fixed build bug
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Fri, 17 Mar 2017 22:44:00 +0300
+
+v8unpack (3.0.39-1~xenial) xenial; urgency=low
+
+  * Added -list mode
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Mon, 06 Mar 2017 23:01:04 +0300
+
+v8unpack (3.0.39-1~vivid) vivid; urgency=low
+
+  * Added -list mode
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Mon, 06 Mar 2017 23:01:04 +0300
+
+v8unpack (3.0.39-1~trusty) trusty; urgency=low
+
+  * Added -list mode
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Mon, 06 Mar 2017 23:01:04 +0300
+
+v8unpack (3.0.38-3~xenial) xenial; urgency=low
+
+  * Xenial port
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Tue, 27 Dec 2016 01:02:07 +0300
+
+v8unpack (3.0.38-3~vivid) vivid; urgency=low
+
+  * Vivid port
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Tue, 27 Dec 2016 01:02:07 +0300
+
+v8unpack (3.0.38-3) trusty; urgency=low
+
+  * Added -build -nopack mode
+  * Deb-dependencies updated
+  * Switched to static linking
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Mon, 26 Dec 2016 23:31:46 +0300
+
+v8unpack (3.0.36-1) trusty; urgency=low
+
+  * Corrected installation binary path 
+  * Updated version number
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Sun, 28 Jun 2015 18:07:00 +0300
+
+v8unpack (3.0.33-4) trusty; urgency=low
+
+  * Corrected build dependencies: zlib added 
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Sun, 28 Jun 2015 14:30:52 +0300

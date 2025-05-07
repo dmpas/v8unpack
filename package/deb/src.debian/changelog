@@ -1,3 +1,10 @@
+v8unpack (3.0.43~noble) noble; urgency=low
+
+  * Format 8.3.16 support
+  * Minor fixes
+
+ -- Sergey Batanov <sergey.batanov@dmpas.ru>  Sat, 03 May 2025 11:50:50 +0300
+
 v8unpack (3.0.43-2~bionic) xenial; urgency=low
 
   * Format 8.3.16 support

@@ -1,0 +1,12 @@
+Package: v8unpack
+Version: 3.0.43
+Section: utils
+Priority: optional
+Maintainer: Sergey Batanov <sergey.batanov@dmpas.ru>
+Build-Depends: debhelper (>= 8.0.0)
+Standards-Version: 3.9.4
+Homepage: https://github.com/e8tools/v8unpack
+Vcs-Git: https://github.com/e8tools/v8unpack.git
+Architecture: amd64
+Depends:
+Description: Enterprise 8 unpack tool

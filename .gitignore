@@ -4,6 +4,7 @@
 Debug
 *.o
 *.d
+*.deb
 tmp
 .codelite
 v8unpack.txt

@@ -11,7 +11,7 @@
 			<Directory Id="ProgramFilesFolder">
 				<Directory Id="APPLICATIONFOLDER" Name="v8unpack">
 					<Component Id="V8Unpack_Component" Guid='270290c4-bffb-4c60-874e-f74ad4ca2aaa'>
-						<File Id='v8unpack.exe' DiskId='1' Source='Release\v8unpack.exe' />
+						<File Id='v8unpack.exe' DiskId='1' Source='v8unpack.exe' />
 						<File Id='LICENSE' DiskId='1' Source='LICENSE' />
 					</Component>
 					<Component Id="SetPathVariable" Guid='7f5afde6-7413-490d-8b57-f8eeaa246b13' KeyPath='yes'>
