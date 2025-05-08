@@ -16,36 +16,17 @@ V8Unpack - a small console program  for rebuild/build configuration files [1C](h
 
 Windows, POSIX
 
-## Environment
-
-Project for [codelite IDE](http://www.codelite.org/)  
-Project for [Codeblocks IDE](http://codeblocks.org/)  
-CMake
-
 ## Build
 
 [![Build status](https://ci.appveyor.com/api/projects/status/48ac3trblfjjkts7/branch/master?svg=true)](https://ci.appveyor.com/project/dmpas/v8unpack/branch/master)
 
-[Прямая ссылка на последнюю успешную сборку win32](https://ci.appveyor.com/api/projects/dmpas/v8unpack/artifacts/Release%2Fv8unpack.exe?branch=master)
+[Прямая ссылка на последнюю успешную сборку win32](https://storage.yandexcloud.net/appveyor/v8unpack/develop/win/v8unpack.exe)
 
 ### Ubuntu/Debian
 
 ```
-sudo apt-add-repository ppa:dmpas/e8
-sudo apt-get update
-sudo apt-get install v8unpack
-```
-
-### Fedora\Centos
-```
-cd /etc/yum.repos.d/
-sudo wget http://download.opensuse.org/repositories/home:/pumbaEO/Fedora_22/home:pumbaEO.repo
-sudo dnf install v8unpack
-```
-
-### Chocolatey
-```
-choco install v8unpack -source https://www.myget.org/F/onescript -y
+curl https://storage.yandexcloud.net/appveyor/v8unpack/develop/ubuntu/v8unpack-3.0.43~bionic.deb --output v8unpack.deb
+sudo dpkg -i v8unpack.deb
 ```
 
 ## Version 3.0
