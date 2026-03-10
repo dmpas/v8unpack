@@ -264,6 +264,20 @@ struct Format16
 	placeholder(std::basic_ostream<char>& _Ostr);
 };
 
+struct Format16ZeroBased
+{
+	typedef stFileHeader64  file_header_t;
+	typedef stBlockHeader64 block_header_t;
+	typedef stElemAddr64    elem_addr_t;
+
+	static const uint64_t UNDEFINED_VALUE = 0xffffffffffffffff;
+	static const std::streamoff BASE_OFFSET = 0;
+	static const uint64_t DEFAULT_PAGE_SIZE = 512;
+
+	static std::basic_ostream<char>&
+		placeholder(std::basic_ostream<char>& _Ostr);
+};
+
 
 class CV8File
 {
@@ -337,6 +351,7 @@ int Parse(
 
 int ListFiles(const std::string &filename);
 bool IsV8File(std::basic_istream<char> &file);
+bool IsV8File16ZeroBased(std::basic_istream<char>& file);
 bool IsV8File16(std::basic_istream<char>& file);
 
 int Deflate(std::istream &source, const std::string &out_filename);

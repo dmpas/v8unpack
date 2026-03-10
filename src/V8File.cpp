@@ -611,6 +611,10 @@ int ListFiles(const string &filename)
 		return V8UNPACK_SOURCE_DOES_NOT_EXIST;
 	}
 
+	if (IsV8File16ZeroBased(file)) {
+		return list_files<Format16ZeroBased>(file);
+	}
+	
 	if (!IsV8File(file)) {
 		return V8UNPACK_NOT_V8_FILE;
 	}
@@ -711,6 +715,10 @@ int UnpackToFolder(const string &filename_in, const string &dirname, const strin
 		return -1;
 	}
 
+	if (IsV8File16ZeroBased(file)) {
+		return unpack_to_folder<Format16ZeroBased>(file, dirname, UnpackElemWithName, print_progress);
+	}
+
 	if (!IsV8File(file)) {
 		return V8UNPACK_NOT_V8_FILE;
 	}
@@ -756,6 +764,11 @@ static bool checkV8File(basic_istream<char> &file)
 bool IsV8File(basic_istream<char> &file)
 {
 	return checkV8File<Format15>(file);
+}
+
+bool IsV8File16ZeroBased(basic_istream<char>& file)
+{
+	return checkV8File <Format16ZeroBased>(file);
 }
 
 bool IsV8File16(basic_istream<char>& file)
@@ -872,6 +885,10 @@ int PackFromFolder(const string &dirname, const string &filename_out)
 
 int RecursiveUnpack(const string &directory, basic_istream<char> &file, const vector<string> &filter, bool boolInflate, bool UnpackWhenNeed)
 {
+	if (IsV8File16ZeroBased(file)) {
+		return recursive_unpack<Format16ZeroBased>(directory, file, filter, boolInflate, UnpackWhenNeed);
+	}
+
 	if (!IsV8File(file)) {
 		return V8UNPACK_NOT_V8_FILE;
 	}

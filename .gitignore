@@ -15,8 +15,11 @@ Makefile
 /*.layout
 /obj
 /bin
+/out
+/.vs
 gmon.out
 /build
 
 cmake-build-*/*
 .idea/*
+CMakeSettings.json
