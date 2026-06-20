@@ -359,6 +359,12 @@ int SaveBlockData(basic_ostream<char> &file_out, const char *pBlockData, size_t 
 static int
 directory_container_compatibility(const string &in_dirname)
 {
+	{ // copyinfo как признак внешней обработки / внешнего отчета - с ними упаковываемся по-старому всегда
+		auto copyinfo_file_path = boost::filesystem::path(in_dirname) / "copyinfo";
+		if (boost::filesystem::exists(copyinfo_file_path)) {
+			return VersionFile::COMPATIBILITY_DEFAULT;
+		}
+	}
 	{ // распакованный файл version (после Parse)
 		auto version_file_path = boost::filesystem::path(in_dirname) / "version";
 		if (boost::filesystem::exists(version_file_path)) {
