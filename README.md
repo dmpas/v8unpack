@@ -18,7 +18,9 @@ Windows, POSIX
 
 ## Build
 
-[![Build status](https://ci.appveyor.com/api/projects/status/48ac3trblfjjkts7/branch/master?svg=true)](https://ci.appveyor.com/project/dmpas/v8unpack/branch/master)
+[![CI](https://github.com/e8tools/v8unpack/actions/workflows/ci.yml/badge.svg)](https://github.com/e8tools/v8unpack/actions/workflows/ci.yml)
+
+[![Build status](https://ci.appveyor.com/api/projects/status/48ac3trblfjjkts7/branch/master?svg=true)](https://ci.appveyor.com/project/e8tools/v8unpack/branch/master)
 
 [Прямая ссылка на последнюю успешную сборку win32](https://storage.yandexcloud.net/appveyor/v8unpack/develop/win/v8unpack.exe)
 
