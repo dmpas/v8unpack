@@ -94,7 +94,8 @@ jobs:
           key: vcpkg-${{ matrix.os }}-${{ env.VCPKG_LIBS }}
 
       - name: Install dependencies
-        run: "$VCPKG_ROOT/vcpkg" install ${{ env.VCPKG_LIBS }}
+        run: |
+          "$VCPKG_ROOT/vcpkg" install ${{ env.VCPKG_LIBS }}
 
       - name: Configure
         run: |
