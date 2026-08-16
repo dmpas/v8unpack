@@ -6,9 +6,9 @@ function create_data {
 		dd if=/dev/urandom of=$2 bs=1 count=4096 >/dev/null 2>&1
 	else
 		mkdir $2
-		for i in `seq 0 9`;
+		for i in $(seq 0 9 2>/dev/null || jot - 0 9);
 		do
-			create_data `expr $1 - 1` "$2/$i"
+			create_data $(($1 - 1)) "$2/$i"
 		done
 	fi
 

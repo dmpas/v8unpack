@@ -69,6 +69,53 @@ jobs:
           name: v8unpack-deb-${{ matrix.os }}
           path: v8unpack*.deb
 
+  macos:
+    name: macOS (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap vcpkg
+        run: |
+          VCPKG_ROOT="${{ runner.temp }}/vcpkg"
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$VCPKG_ROOT" >> "$GITHUB_ENV"
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg/installed
+          key: vcpkg-${{ matrix.os }}-${{ env.VCPKG_LIBS }}
+
+      - name: Install dependencies
+        run: "$VCPKG_ROOT/vcpkg" install ${{ env.VCPKG_LIBS }}
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: test
+        run: ./run.sh ../build/v8unpack
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8unpack-macos-${{ matrix.os }}
+          path: build/v8unpack
+
   windows:
     name: Windows
     runs-on: windows-latest
