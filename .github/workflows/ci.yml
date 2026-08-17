@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VCPKG_LIBS: boost-iostreams boost-filesystem boost-system zlib
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap vcpkg
+        run: |
+          VCPKG_ROOT="${{ runner.temp }}/vcpkg"
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$VCPKG_ROOT" >> "$GITHUB_ENV"
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg/installed
+          key: vcpkg-${{ matrix.os }}-${{ env.VCPKG_LIBS }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debhelper build-essential
+          "$VCPKG_ROOT/vcpkg" install ${{ env.VCPKG_LIBS }}
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: test
+        run: ./run.sh ../build/v8unpack
+
+      - name: Package deb
+        run: |
+          cd build
+          ../package/deb/builddeb.sh
+          mv v8unpack*.deb ..
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8unpack-deb-${{ matrix.os }}
+          path: v8unpack*.deb
+
+  macos:
+    name: macOS (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap vcpkg
+        run: |
+          VCPKG_ROOT="${{ runner.temp }}/vcpkg"
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$VCPKG_ROOT" >> "$GITHUB_ENV"
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg/installed
+          key: vcpkg-${{ matrix.os }}-${{ env.VCPKG_LIBS }}
+
+      - name: Install dependencies
+        run: |
+          "$VCPKG_ROOT/vcpkg" install ${{ env.VCPKG_LIBS }}
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: test
+        run: ./run.sh ../build/v8unpack
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8unpack-macos-${{ matrix.os }}
+          path: build/v8unpack
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          VCPKG_ROOT="${{ runner.temp }}/vcpkg"
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          cmd.exe //c "cd /d ${{ runner.temp }}\vcpkg && bootstrap-vcpkg.bat -disableMetrics"
+          echo "VCPKG_ROOT=$VCPKG_ROOT" >> "$GITHUB_ENV"
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg\installed
+          key: vcpkg-windows-x64-static-${{ env.VCPKG_LIBS }}
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          "$VCPKG_ROOT/vcpkg" install ${{ env.VCPKG_LIBS }} --triplet x64-windows-static
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build \
+            -G "Visual Studio 18 2026" -A x64 \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        shell: bash
+        working-directory: test
+        run: ./run.sh ../build/Release/v8unpack.exe
+
+      - name: Prepare package files
+        shell: bash
+        run: |
+          cp build/Release/v8unpack.exe package/
+          cp LICENSE package/
+          cp README.md package/
+
+      - name: Build MSI
+        working-directory: package
+        run: |
+          $wix = "${env:WIX}bin"
+          if (-not (Test-Path "$wix\candle.exe")) {
+            $wix = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          }
+          if (-not (Test-Path "$wix\candle.exe")) {
+            choco install wixtoolset -y --no-progress
+            $wix = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          }
+          & "$wix\candle.exe" v8unpack.wxs
+          $version = (Select-String -Path ..\src\version.h -Pattern 'V8P_VERSION "([^"]+)"').Matches.Groups[1].Value
+          & "$wix\light.exe" -out "v8unpack-$version.msi" v8unpack.wixobj
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8unpack-windows
+          path: |
+            build/Release/v8unpack.exe
+            package/v8unpack-*.msi

@@ -16,9 +16,9 @@ Makefile
 /obj
 /bin
 /out
-/.vs
 gmon.out
 /build
+/.vs
 
 cmake-build-*/*
 .idea/*
