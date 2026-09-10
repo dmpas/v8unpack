@@ -1275,8 +1275,52 @@ int AddToContainer(const string &filename, const vector<AddItem> &items, AddMode
 }
 
 template<typename format>
+static int unpack_block_to_stream(basic_istream<char> &file, basic_ostream<char> &out, const string &block_name)
+{
+	file.seekg(format::BASE_OFFSET, ios_base::beg);
+	typename format::file_header_t FileHeader;
+	file.read(reinterpret_cast<char*>(&FileHeader), FileHeader.Size());
+
+	auto pElemsAddrs = ReadElementsAllocationTable<format>(file);
+	auto ElemsNum = pElemsAddrs.size();
+
+	for (uint32_t i = 0; i < ElemsNum; i++) {
+		if (pElemsAddrs[i].fffffff != format::UNDEFINED_VALUE) {
+			break;
+		}
+		if (pElemsAddrs[i].elem_header_addr == format::UNDEFINED_VALUE) {
+			continue;
+		}
+
+		file.seekg(pElemsAddrs[i].elem_header_addr + format::BASE_OFFSET, ios_base::beg);
+
+		CV8Elem elem;
+		if (!SafeReadBlockData<format>(file, elem.header)) {
+			return V8UNPACK_HEADER_ELEM_NOT_CORRECT;
+		}
+
+		if (elem.GetName() != block_name) {
+			continue;
+		}
+
+		if (pElemsAddrs[i].elem_data_addr != format::UNDEFINED_VALUE) {
+			file.seekg(pElemsAddrs[i].elem_data_addr + format::BASE_OFFSET, ios_base::beg);
+			ReadBlockData<format>(file, out);
+		}
+		return V8UNPACK_OK;
+	}
+
+	cerr << "Unpack. Block `" << block_name << "` not found!" << endl;
+	return V8UNPACK_ERROR;
+}
+
+template<typename format>
 static int unpack_to_folder(boost::filesystem::ifstream &file, const string &dirname, const string &UnpackElemWithName, bool print_progress)
 {
+	if (dirname == "-" && !UnpackElemWithName.empty()) {
+		return unpack_block_to_stream<format>(file, cout, UnpackElemWithName);
+	}
+
 	int ret = V8UNPACK_OK;
 
 	boost::filesystem::path p_dir(dirname);

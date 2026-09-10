@@ -42,6 +42,7 @@ int usage(vector<string> &argv)
 	cout << endl;
 	cout << "V8UNPACK" << endl;
 	cout << "  -U[NPACK]            in_filename.cf     out_dirname [block_name]" << endl;
+	cout << "  -U[NPACK]            in_filename.cf     -             block_name" << endl;
 	cout << "  -U[NPACK]  -L[IST]   listfile" << endl;
 	cout << "  -PA[CK]              in_dirname         out_filename.cf" << endl;
 	cout << "  -PA[CK]    -L[IST]   listfile" << endl;
@@ -88,6 +89,9 @@ int deflate(vector<string> &argv)
 
 int unpack(vector<string> &argv)
 {
+	if (argv[1] == "-" && argv[2].empty()) {
+		return V8UNPACK_SHOW_USAGE;
+	}
 	int ret = UnpackToFolder(argv[0], argv[1], argv[2], true);
 	return ret;
 }

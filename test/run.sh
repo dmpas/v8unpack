@@ -448,8 +448,54 @@ fi
 
 echo Passed
 
-rm -rf "$DEL_SRC" "$DEL_OUT" "$DEL_CF" "$ADD_OUT" "$ADD_SRC" "$ADD_CF" add-dir
-rm -f add-extra.txt add-plain.txt add-build.txt $DIFFLOG
+echo 'unpack stdout / pipe add tests...'
+
+FIX_FLAT="$SCRIPT_DIR/fixtures/f15-flat"
+cp "$FIX_FLAT/in.cf" unpack-src.cf
+$UNPACK -unpack unpack-src.cf - alpha > unpack-stdout.bin
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+diff "$FIX_FLAT/expected/alpha" unpack-stdout.bin >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+cp "$FIX_FLAT/in.cf" pipe-dest.cf
+$UNPACK -unpack unpack-src.cf - beta | $UNPACK -add -name beta-copy - pipe-dest.cf >/dev/null
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+$UNPACK -parse pipe-dest.cf pipe-out >/dev/null
+if [ ! -f pipe-out/beta-copy ]; then
+	echo Failed
+	exit 1
+fi
+diff "$FIX_FLAT/expected/beta" pipe-out/beta-copy >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+$UNPACK -unpack unpack-src.cf - >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+$UNPACK -unpack unpack-src.cf - missing-block >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+echo Passed
+
+rm -rf "$DEL_SRC" "$DEL_OUT" "$DEL_CF" "$ADD_OUT" "$ADD_SRC" "$ADD_CF" add-dir pipe-out
+rm -f add-extra.txt add-plain.txt add-build.txt unpack-src.cf unpack-stdout.bin pipe-dest.cf $DIFFLOG
 
 rm -rf $DIRNAME
 rm -rf $OUTDIRNAME

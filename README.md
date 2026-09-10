@@ -41,7 +41,8 @@ sudo dpkg -i v8unpack.deb
 ## Использование
 
 ```
-  -U[NPACK]            in_filename.cf     out_dirname
+  -U[NPACK]            in_filename.cf     out_dirname [block_name]
+  -U[NPACK]            in_filename.cf     -             block_name
   -U[NPACK]  -L[IST]   listfile
   -PA[CK]              in_dirname         out_filename.cf
   -PA[CK]    -L[IST]   listfile
