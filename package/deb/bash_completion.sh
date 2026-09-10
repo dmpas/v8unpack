@@ -4,7 +4,7 @@ _v8unpack_complete()
 	COMPREPLY=()
 	cur="${COMP_WORDS[COMP_CWORD]}"
 	prev="${COMP_WORDS[COMP_CWORD]}"
-	opts="-unpack -pack -parse -build -inflate -deflate \
+	opts="-unpack -pack -parse -build -inflate -deflate -delete -add \
 		-list -example -bat -version -listfiles"
 
 	if [[ ${COMP_CWORD} == 1 ]] ; then

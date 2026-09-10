@@ -51,6 +51,10 @@ sudo dpkg -i v8unpack.deb
   -D[EFLATE] -L[IST]   listfile
   -P[ARSE]             in_filename        out_dirname
   -P[ARSE]   -L[IST]   listfile
+  -DEL[ETE]            in_filename        [block_mask1 block_mask2 ...]
+  -DEL[ETE]  -L[IST]   listfile
+  -ADD [-PACK|-BUILD [-NOPACK]] [-N[AME] name] source|- out_filename
+  -ADD [-PACK|-BUILD [-NOPACK]] -LISTFILES|-LF listfile out_filename
   -B[UILD] [-N[OPACK]] in_dirname         out_filename
   -B[UILD] [-N[OPACK]] -L[IST] listfile
 ```

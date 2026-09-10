@@ -112,7 +112,345 @@ rm -rf $OUTDIRNAME2
 rm $TMPFILE2
 rm $LISTFILE
 
+echo 'delete block tests...'
+
+DEL_SRC='del-src'
+DEL_CF='del-test.cf'
+DEL_OUT='del-out'
+FIX_FLAT="$SCRIPT_DIR/fixtures/f15-flat"
+FIX_F16Z="$SCRIPT_DIR/fixtures/f16z-inner"
+FIX_F16="$SCRIPT_DIR/fixtures/f16-zeropad-hex"
+
+rm -rf "$DEL_SRC" "$DEL_OUT" "$DEL_CF" del-test2.cf del-list.txt
+
+mkdir "$DEL_SRC"
+printf 'one' > "$DEL_SRC/alpha"
+printf 'two-two' > "$DEL_SRC/beta"
+printf 'three-three-three' > "$DEL_SRC/gamma"
+printf 't1' > "$DEL_SRC/test1"
+printf 't2' > "$DEL_SRC/test2"
+printf 'dot' > "$DEL_SRC/file.name"
+
+$UNPACK -build -nopack "$DEL_SRC" "$DEL_CF" >/dev/null
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+# точное имя, правка на месте (размер файла не меняется)
+cp "$DEL_CF" del-exact.cf
+before=$(wc -c < del-exact.cf | tr -d ' ')
+$UNPACK -delete del-exact.cf beta >/dev/null
+after=$(wc -c < del-exact.cf | tr -d ' ')
+if [ "$before" != "$after" ]; then
+	echo Failed
+	exit 1
+fi
+$UNPACK -listfiles del-exact.cf > del-names.txt
+if grep -qx beta del-names.txt || ! grep -qx alpha del-names.txt; then
+	echo Failed
+	exit 1
+fi
+$UNPACK -parse del-exact.cf "$DEL_OUT" >/dev/null
+if [ ! -f "$DEL_OUT/alpha" ] || [ -e "$DEL_OUT/beta" ] || [ ! -f "$DEL_OUT/gamma" ]; then
+	echo Failed
+	exit 1
+fi
+diff "$DEL_SRC/alpha" "$DEL_OUT/alpha" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-exact.cf del-names.txt
+
+# маска *
+cp "$DEL_CF" del-star.cf
+$UNPACK -del del-star.cf 'test*' >/dev/null
+$UNPACK -parse del-star.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/test1" ] || [ -e "$DEL_OUT/test2" ] || [ ! -f "$DEL_OUT/alpha" ] || [ ! -f "$DEL_OUT/file.name" ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-star.cf
+
+# маска ?
+cp "$DEL_CF" del-q.cf
+$UNPACK -delete del-q.cf '????' >/dev/null
+$UNPACK -parse del-q.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/beta" ] || [ ! -f "$DEL_OUT/alpha" ] || [ ! -f "$DEL_OUT/gamma" ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-q.cf
+
+# маска в середине и несколько масок
+cp "$DEL_CF" del-multi.cf
+$UNPACK -delete del-multi.cf 'a*a' 'file.*' >/dev/null
+$UNPACK -parse del-multi.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/alpha" ] || [ -e "$DEL_OUT/file.name" ] || [ ! -f "$DEL_OUT/beta" ] || [ ! -f "$DEL_OUT/test1" ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-multi.cf
+
+# нет совпадений — все блоки на месте
+cp "$DEL_CF" del-nomatch.cf
+$UNPACK -delete del-nomatch.cf 'zzz*' >/dev/null
+$UNPACK -parse del-nomatch.cf "$DEL_OUT" >/dev/null
+diff -r "$DEL_SRC" "$DEL_OUT" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-nomatch.cf
+
+# удаление всех блоков
+cp "$DEL_CF" del-all.cf
+$UNPACK -delete del-all.cf '*' >/dev/null
+$UNPACK -parse del-all.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/alpha" ] || [ -e "$DEL_OUT/beta" ] || [ -e "$DEL_OUT/gamma" ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-all.cf
+
+# list-файл
+cp "$DEL_CF" del-list1.cf
+cp "$DEL_CF" del-list2.cf
+printf '%b\n%b' "del-list1.cf;alpha" "del-list2.cf;test?;file.*" > del-list.txt
+$UNPACK -delete -list del-list.txt >/dev/null
+$UNPACK -parse del-list1.cf del-list1-out >/dev/null
+$UNPACK -parse del-list2.cf del-list2-out >/dev/null
+if [ -e del-list1-out/alpha ] || [ ! -f del-list1-out/beta ]; then
+	echo Failed
+	exit 1
+fi
+if [ -e del-list2-out/test1 ] || [ -e del-list2-out/test2 ] || [ -e del-list2-out/file.name ] || [ ! -f del-list2-out/alpha ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf del-list1-out del-list2-out del-list1.cf del-list2.cf del-list.txt
+
+# фикстура f15-paged-toc (запись TOC на границе страниц)
+FIX_PAGED="$SCRIPT_DIR/fixtures/f15-paged-toc"
+cp "$FIX_PAGED/in.cf" del-paged.cf
+$UNPACK -delete del-paged.cf e2 >/dev/null
+$UNPACK -parse del-paged.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/e2" ] || [ ! -f "$DEL_OUT/e0" ] || [ ! -f "$DEL_OUT/e1" ] || [ ! -f "$DEL_OUT/e3" ] || [ ! -f "$DEL_OUT/e4" ]; then
+	echo Failed
+	exit 1
+fi
+diff "$FIX_PAGED/expected/e1" "$DEL_OUT/e1" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-paged.cf
+
+# фикстура f15
+cp "$FIX_FLAT/in.cf" del-fix15.cf
+$UNPACK -delete del-fix15.cf 'a*' '?amma' >/dev/null
+$UNPACK -parse del-fix15.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/alpha" ] || [ -e "$DEL_OUT/gamma" ] || [ ! -f "$DEL_OUT/beta" ]; then
+	echo Failed
+	exit 1
+fi
+diff "$FIX_FLAT/expected/beta" "$DEL_OUT/beta" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-fix15.cf
+
+# фикстура f16z
+cp "$FIX_F16Z/in.cf" del-fix16z.cf
+$UNPACK -delete del-fix16z.cf info >/dev/null
+$UNPACK -parse del-fix16z.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/info" ] || [ ! -f "$DEL_OUT/form" ]; then
+	echo Failed
+	exit 1
+fi
+diff "$FIX_F16Z/expected/form" "$DEL_OUT/form" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-fix16z.cf
+
+# фикстура f16 (с placeholder)
+cp "$FIX_F16/in.cf" del-fix16.cf
+$UNPACK -delete del-fix16.cf 'z*' >/dev/null
+$UNPACK -parse del-fix16.cf "$DEL_OUT" >/dev/null
+if [ -e "$DEL_OUT/zeroed" ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$DEL_OUT" del-fix16.cf
+
+# ошибка: нет файла
+$UNPACK -delete missing-file.cf alpha >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+echo Passed
+
+echo 'add block tests...'
+
+ADD_CF='add-test.cf'
+ADD_OUT='add-out'
+ADD_SRC='add-src'
+rm -rf "$ADD_OUT" "$ADD_SRC" "$ADD_CF" add-extra.txt add-plain.txt add-list.txt add-dir add-stdin.cf
+
+cp "$DEL_CF" "$ADD_CF"
+
+# PACK по умолчанию, имя из файла
+printf 'added-raw' > add-extra.txt
+$UNPACK -add add-extra.txt "$ADD_CF" >/dev/null
+$UNPACK -parse "$ADD_CF" "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/add-extra.txt" ]; then
+	echo Failed
+	exit 1
+fi
+diff add-extra.txt "$ADD_OUT/add-extra.txt" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT"
+
+# -NAME
+printf 'named-body' > add-plain.txt
+$UNPACK -add -n custom.name add-plain.txt "$ADD_CF" >/dev/null
+$UNPACK -parse "$ADD_CF" "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/custom.name" ]; then
+	echo Failed
+	exit 1
+fi
+diff add-plain.txt "$ADD_OUT/custom.name" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT"
+
+# -BUILD (deflate)
+printf 'build-payload' > add-build.txt
+$UNPACK -add -build add-build.txt "$ADD_CF" >/dev/null
+$UNPACK -parse "$ADD_CF" "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/add-build.txt" ]; then
+	echo Failed
+	exit 1
+fi
+diff add-build.txt "$ADD_OUT/add-build.txt" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT"
+
+# -BUILD -NOPACK для каталога
+mkdir add-dir
+printf 'child-a' > add-dir/child
+$UNPACK -add -build -nopack add-dir "$ADD_CF" >/dev/null
+$UNPACK -parse "$ADD_CF" "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/add-dir/child" ]; then
+	echo Failed
+	exit 1
+fi
+diff add-dir/child "$ADD_OUT/add-dir/child" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT"
+
+# stdin + -NAME
+cp "$DEL_CF" add-stdin.cf
+printf 'from-stdin' | $UNPACK -add -name stdinfile - add-stdin.cf >/dev/null
+$UNPACK -parse add-stdin.cf "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/stdinfile" ]; then
+	echo Failed
+	exit 1
+fi
+printf 'from-stdin' > add-stdin-expected.txt
+diff add-stdin-expected.txt "$ADD_OUT/stdinfile" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT" add-stdin.cf add-stdin-expected.txt
+
+# -LISTFILES
+cp "$DEL_CF" add-lf.cf
+printf 'one-list' > add-l1.txt
+printf 'two-list' > add-l2.txt
+printf '%s\n%s\n' add-l1.txt add-l2.txt > add-list.txt
+$UNPACK -add -lf add-list.txt add-lf.cf >/dev/null
+$UNPACK -parse add-lf.cf "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/add-l1.txt" ] || [ ! -f "$ADD_OUT/add-l2.txt" ]; then
+	echo Failed
+	exit 1
+fi
+diff add-l1.txt "$ADD_OUT/add-l1.txt" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT" add-lf.cf add-l1.txt add-l2.txt add-list.txt
+
+# удаление + добавление в свободный слот, размер не растёт
+cp "$DEL_CF" add-reuse.cf
+printf 'zz' > add-reuse.txt
+before=$(wc -c < add-reuse.cf | tr -d ' ')
+$UNPACK -delete add-reuse.cf beta >/dev/null
+$UNPACK -add -name zzzz add-reuse.txt add-reuse.cf >/dev/null
+after=$(wc -c < add-reuse.cf | tr -d ' ')
+if [ "$before" != "$after" ]; then
+	echo Failed
+	exit 1
+fi
+$UNPACK -parse add-reuse.cf "$ADD_OUT" >/dev/null
+if [ -e "$ADD_OUT/beta" ] || [ ! -f "$ADD_OUT/zzzz" ]; then
+	echo Failed
+	exit 1
+fi
+diff add-reuse.txt "$ADD_OUT/zzzz" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT" add-reuse.cf add-reuse.txt
+
+# фикстура f16z
+cp "$FIX_F16Z/in.cf" add-fix16z.cf
+printf 'new-form' > add-f16z.txt
+$UNPACK -add -name extra add-f16z.txt add-fix16z.cf >/dev/null
+$UNPACK -parse add-fix16z.cf "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/extra" ] || [ ! -f "$ADD_OUT/info" ]; then
+	echo Failed
+	exit 1
+fi
+diff add-f16z.txt "$ADD_OUT/extra" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT" add-fix16z.cf add-f16z.txt
+
+# stdin без -NAME
+printf 'x' | $UNPACK -add - "$ADD_CF" >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+echo Passed
+
+rm -rf "$DEL_SRC" "$DEL_OUT" "$DEL_CF" "$ADD_OUT" "$ADD_SRC" "$ADD_CF" add-dir
+rm -f add-extra.txt add-plain.txt add-build.txt $DIFFLOG
+
 rm -rf $DIRNAME
 rm -rf $OUTDIRNAME
-rm $TMPFILE
-rm $DIFFLOG
+rm -f $TMPFILE $DIFFLOG

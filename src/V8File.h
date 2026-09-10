@@ -350,6 +350,24 @@ int Parse(
 );
 
 int ListFiles(const std::string &filename);
+int DeleteBlocks(const std::string &filename, const std::vector<std::string> &masks);
+
+enum class AddMode {
+	Pack = 0,
+	Build,
+	BuildNopack
+};
+
+struct AddItem {
+	std::string source;
+	std::string name;
+};
+
+int AddToContainer(
+		const std::string &filename,
+		const std::vector<AddItem> &items,
+		AddMode mode
+);
 bool IsV8File(std::basic_istream<char> &file);
 bool IsV8File16ZeroBased(std::basic_istream<char>& file);
 bool IsV8File16(std::basic_istream<char>& file);
