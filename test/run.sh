@@ -320,6 +320,18 @@ if [ $? -ne 0 ]; then
 fi
 rm -rf "$ADD_OUT"
 
+# повторное ADD с тем же именем — ошибка
+$UNPACK -add add-extra.txt "$ADD_CF" >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+$UNPACK -add -n alpha add-extra.txt "$ADD_CF" >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
 # -NAME
 printf 'named-body' > add-plain.txt
 $UNPACK -add -n custom.name add-plain.txt "$ADD_CF" >/dev/null
@@ -445,6 +457,50 @@ if [ $? -eq 0 ]; then
 	echo Failed
 	exit 1
 fi
+
+echo Passed
+
+echo 'put block tests...'
+
+# PUT нового имени — как ADD
+printf 'put-new' > put-new.txt
+$UNPACK -put -n put-new put-new.txt "$ADD_CF" >/dev/null
+$UNPACK -parse "$ADD_CF" "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/put-new" ]; then
+	echo Failed
+	exit 1
+fi
+diff put-new.txt "$ADD_OUT/put-new" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT"
+
+# PUT существующего — замена содержимого
+printf 'alpha-replaced' > put-alpha.txt
+$UNPACK -put -n alpha put-alpha.txt "$ADD_CF" >/dev/null
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+$UNPACK -parse "$ADD_CF" "$ADD_OUT" >/dev/null
+if [ ! -f "$ADD_OUT/alpha" ]; then
+	echo Failed
+	exit 1
+fi
+diff put-alpha.txt "$ADD_OUT/alpha" >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+printf 'one' > put-alpha-old.txt
+diff put-alpha-old.txt "$ADD_OUT/alpha" >$DIFFLOG 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+rm -rf "$ADD_OUT" put-new.txt put-alpha.txt put-alpha-old.txt
 
 echo Passed
 

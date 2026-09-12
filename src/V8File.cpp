@@ -1150,8 +1150,40 @@ static int find_unused_toc_index(const vector<typename format::elem_addr_t> &toc
 	return -1;
 }
 
+template<typename format, typename stream_t>
+static int find_toc_index_by_name(
+		stream_t &file,
+		const vector<typename format::elem_addr_t> &toc,
+		const string &name)
+{
+	for (size_t i = 0; i < toc.size(); i++) {
+		if (toc[i].fffffff != format::UNDEFINED_VALUE) {
+			break;
+		}
+		if (toc[i].elem_header_addr == format::UNDEFINED_VALUE) {
+			continue;
+		}
+
+		file.clear();
+		file.seekg(toc[i].elem_header_addr + format::BASE_OFFSET, ios_base::beg);
+		CV8Elem elem;
+		if (!SafeReadBlockData<format>(file, elem.header)) {
+			return -2;
+		}
+		if (elem.GetName() == name) {
+			return static_cast<int>(i);
+		}
+	}
+	return -1;
+}
+
 template<typename format>
-static int add_items(boost::filesystem::fstream &file, const string &filename, const vector<AddItem> &items, AddMode mode)
+static int add_items(
+		boost::filesystem::fstream &file,
+		const string &filename,
+		const vector<AddItem> &items,
+		AddMode mode,
+		bool replace)
 {
 	typename format::file_header_t FileHeader;
 	file.clear();
@@ -1164,13 +1196,33 @@ static int add_items(boost::filesystem::fstream &file, const string &filename, c
 	const auto toc_pos = format::BASE_OFFSET + static_cast<std::streamoff>(format::file_header_t::Size());
 	auto toc = ReadElementsAllocationTable<format>(file);
 	auto free_head = FileHeader.next_page_addr;
+	const char *op = replace ? "Put" : "Add";
 
 	for (const auto &item : items) {
+		const string name = elem_name_from_source(item.source, item.name);
+		int existing = find_toc_index_by_name<format>(file, toc, name);
+		if (existing == -2) {
+			return V8UNPACK_HEADER_ELEM_NOT_CORRECT;
+		}
+		if (existing >= 0 && !replace) {
+			cerr << op << ". `" << name << "` already exists!" << endl;
+			return V8UNPACK_ELEM_ALREADY_EXISTS;
+		}
+
 		vector<char> header;
 		vector<char> data;
 		int ret = prepare_add_payload(mode, item, header, data);
 		if (ret != V8UNPACK_OK) {
 			return ret;
+		}
+
+		if (existing >= 0) {
+			if (!append_block_to_free_list<format>(file, toc[existing].elem_header_addr, free_head)) {
+				return V8UNPACK_HEADER_ELEM_NOT_CORRECT;
+			}
+			if (!append_block_to_free_list<format>(file, toc[existing].elem_data_addr, free_head)) {
+				return V8UNPACK_HEADER_ELEM_NOT_CORRECT;
+			}
 		}
 
 		typename format::elem_addr_t entry;
@@ -1194,34 +1246,39 @@ static int add_items(boost::filesystem::fstream &file, const string &filename, c
 			return V8UNPACK_ERROR_CREATING_OUTPUT_FILE;
 		}
 
-		int slot = find_unused_toc_index<format>(toc);
 		size_t index;
-		if (slot >= 0) {
-			index = static_cast<size_t>(slot);
+		if (existing >= 0) {
+			index = static_cast<size_t>(existing);
 			toc[index] = entry;
 		} else {
-			index = toc.size();
-			const size_t new_size = (index + 1) * format::elem_addr_t::Size();
-			if (!ensure_toc_capacity<format>(file, toc_pos, new_size, free_head)) {
-				return V8UNPACK_ERROR;
-			}
+			int slot = find_unused_toc_index<format>(toc);
+			if (slot >= 0) {
+				index = static_cast<size_t>(slot);
+				toc[index] = entry;
+			} else {
+				index = toc.size();
+				const size_t new_size = (index + 1) * format::elem_addr_t::Size();
+				if (!ensure_toc_capacity<format>(file, toc_pos, new_size, free_head)) {
+					return V8UNPACK_ERROR;
+				}
 
-			file.clear();
-			file.seekg(toc_pos, ios_base::beg);
-			typename format::block_header_t toc_header;
-			file.read(reinterpret_cast<char*>(&toc_header), toc_header.Size());
-			if (!file || !toc_header.IsCorrect()) {
-				return V8UNPACK_ERROR;
-			}
-			toc_header.set_data_size(static_cast<decltype(toc_header.data_size())>(new_size));
-			file.clear();
-			file.seekp(toc_pos, ios_base::beg);
-			file.write(reinterpret_cast<const char*>(&toc_header), toc_header.Size());
-			if (!file) {
-				return V8UNPACK_ERROR;
-			}
+				file.clear();
+				file.seekg(toc_pos, ios_base::beg);
+				typename format::block_header_t toc_header;
+				file.read(reinterpret_cast<char*>(&toc_header), toc_header.Size());
+				if (!file || !toc_header.IsCorrect()) {
+					return V8UNPACK_ERROR;
+				}
+				toc_header.set_data_size(static_cast<decltype(toc_header.data_size())>(new_size));
+				file.clear();
+				file.seekp(toc_pos, ios_base::beg);
+				file.write(reinterpret_cast<const char*>(&toc_header), toc_header.Size());
+				if (!file) {
+					return V8UNPACK_ERROR;
+				}
 
-			toc.push_back(entry);
+				toc.push_back(entry);
+			}
 		}
 
 		if (!write_into_block<format>(
@@ -1242,36 +1299,37 @@ static int add_items(boost::filesystem::fstream &file, const string &filename, c
 		return V8UNPACK_ERROR_CREATING_OUTPUT_FILE;
 	}
 
-	cout << "Add `" << filename << "`: ok" << endl << flush;
+	cout << op << " `" << filename << "`: ok" << endl << flush;
 	return V8UNPACK_OK;
 }
 
-int AddToContainer(const string &filename, const vector<AddItem> &items, AddMode mode)
+int AddToContainer(const string &filename, const vector<AddItem> &items, AddMode mode, bool replace)
 {
 	if (items.empty()) {
 		return V8UNPACK_SHOW_USAGE;
 	}
 
+	const char *op = replace ? "Put" : "Add";
 	boost::filesystem::fstream file(filename, ios_base::in | ios_base::out | ios_base::binary);
 	if (!file) {
-		cerr << "Add `" << filename << "`. Input file not found!" << endl;
+		cerr << op << " `" << filename << "`. Input file not found!" << endl;
 		return V8UNPACK_SOURCE_DOES_NOT_EXIST;
 	}
 
 	if (IsV8File16ZeroBased(file)) {
-		return add_items<Format16ZeroBased>(file, filename, items, mode);
+		return add_items<Format16ZeroBased>(file, filename, items, mode, replace);
 	}
 
 	if (!IsV8File(file)) {
-		cerr << "Add `" << filename << "` is not V8 file!" << endl;
+		cerr << op << " `" << filename << "` is not V8 file!" << endl;
 		return V8UNPACK_NOT_V8_FILE;
 	}
 
 	if (IsV8File16(file)) {
-		return add_items<Format16>(file, filename, items, mode);
+		return add_items<Format16>(file, filename, items, mode, replace);
 	}
 
-	return add_items<Format15>(file, filename, items, mode);
+	return add_items<Format15>(file, filename, items, mode, replace);
 }
 
 template<typename format>

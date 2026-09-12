@@ -56,6 +56,8 @@ sudo dpkg -i v8unpack.deb
   -DEL[ETE]  -L[IST]   listfile
   -ADD [-PACK|-BUILD [-NOPACK]] [-N[AME] name] source|- out_filename
   -ADD [-PACK|-BUILD [-NOPACK]] -LISTFILES|-LF listfile out_filename
+  -PUT [-PACK|-BUILD [-NOPACK]] [-N[AME] name] source|- out_filename
+  -PUT [-PACK|-BUILD [-NOPACK]] -LISTFILES|-LF listfile out_filename
   -B[UILD] [-N[OPACK]] in_dirname         out_filename
   -B[UILD] [-N[OPACK]] -L[IST] listfile
 ```

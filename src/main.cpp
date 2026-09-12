@@ -56,6 +56,8 @@ int usage(vector<string> &argv)
 	cout << "  -DEL[ETE]  -L[IST]   listfile" << endl;
 	cout << "  -ADD [-PACK|-BUILD [-NOPACK]] [-N[AME] name] source|- out_filename" << endl;
 	cout << "  -ADD [-PACK|-BUILD [-NOPACK]] -LISTFILES|-LF listfile out_filename" << endl;
+	cout << "  -PUT [-PACK|-BUILD [-NOPACK]] [-N[AME] name] source|- out_filename" << endl;
+	cout << "  -PUT [-PACK|-BUILD [-NOPACK]] -LISTFILES|-LF listfile out_filename" << endl;
 	cout << "  -B[UILD] [-N[OPACK]] in_dirname         out_filename" << endl;
 	cout << "  -B[UILD] [-N[OPACK]] -L[IST] listfile" << endl;
 	cout << "  -L[IST]              listfile" << endl;
@@ -147,7 +149,7 @@ static string to_lower_copy(string value)
 	return value;
 }
 
-int add(vector<string> &argv)
+int add_or_put(vector<string> &argv, bool replace)
 {
 	AddMode mode = AddMode::Pack;
 	string elem_name;
@@ -226,7 +228,7 @@ int add(vector<string> &argv)
 			return V8UNPACK_SHOW_USAGE;
 		}
 
-		return AddToContainer(positional[0], items, mode);
+		return AddToContainer(positional[0], items, mode, replace);
 	}
 
 	if (positional.size() < 2 || positional[0].empty() || positional[1].empty()) {
@@ -240,7 +242,17 @@ int add(vector<string> &argv)
 	AddItem item;
 	item.source = positional[0];
 	item.name = elem_name;
-	return AddToContainer(positional[1], {item}, mode);
+	return AddToContainer(positional[1], {item}, mode, replace);
+}
+
+int add(vector<string> &argv)
+{
+	return add_or_put(argv, false);
+}
+
+int put(vector<string> &argv)
+{
+	return add_or_put(argv, true);
 }
 
 int process_list(vector<string> &argv)
@@ -370,6 +382,11 @@ handler_t get_run_mode(const vector<string> &args, int &arg_base, bool &allow_li
 	if (cur_mode == "-add") {
 		allow_listfile = false;
 		return add;
+	}
+
+	if (cur_mode == "-put") {
+		allow_listfile = false;
+		return put;
 	}
 
 	if (cur_mode == "-build" || cur_mode == "-b") {
