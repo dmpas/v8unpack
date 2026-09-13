@@ -550,8 +550,202 @@ fi
 
 echo Passed
 
+echo 'versions file tests...'
+
+VF_UUID='vf-uuid.txt'
+VF_CI='vf-configinfo.txt'
+printf '\xef\xbb\xbf{1,2,"",aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa,"alpha",bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}' > "$VF_UUID"
+printf '%s' $'\xef\xbb\xbf{0,\r\n{216,0,\r\n{80317,0}\r\n}\r\n},\r\n{2,79165599-87f3-4ac0-a26f-bec87ea8f585,YZsp1SBerILCqmJ930K1cmU+5QPr64+4LgI0qUooM2SL6iy53LudBp+6DuIrnfwV},\r\n{2,"alpha",3zNTcmSVEx7JH9YSULpruqXpBC4=,"beta",mYC3tw2+8OkCY89Uyq+bcg+6WHE=}' > "$VF_CI"
+
+$UNPACK -vf -show "$VF_UUID" > vf-show.txt
+if ! grep -q 'alpha' vf-show.txt || ! grep -q 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' vf-show.txt; then
+	echo Failed
+	exit 1
+fi
+
+got=$($UNPACK -vf -get "$VF_UUID" alpha | tr -d '\r')
+if [ "$got" != "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" ]; then
+	echo Failed
+	exit 1
+fi
+
+$UNPACK -vf -set "$VF_UUID" alpha cccccccc-cccc-cccc-cccc-cccccccccccc >/dev/null
+got=$($UNPACK -vf -get "$VF_UUID" alpha | tr -d '\r')
+if [ "$got" != "cccccccc-cccc-cccc-cccc-cccccccccccc" ]; then
+	echo Failed
+	exit 1
+fi
+
+# пустое имя и исходная версия контейнера сохранились
+got=$($UNPACK -vf -get "$VF_UUID" "" | tr -d '\r')
+if [ "$got" != "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" ]; then
+	echo Failed
+	exit 1
+fi
+
+$UNPACK -vf -set "$VF_UUID" alpha not-a-uuid >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+got=$($UNPACK -vf -get "$VF_UUID" alpha | tr -d '\r')
+if [ "$got" != "cccccccc-cccc-cccc-cccc-cccccccccccc" ]; then
+	echo Failed
+	exit 1
+fi
+
+old=$got
+new=$($UNPACK -vf -update "$VF_UUID" alpha | tr -d '\r')
+if [ -z "$new" ] || [ "$new" = "$old" ]; then
+	echo Failed
+	exit 1
+fi
+case "$new" in
+	[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+	*) echo Failed; exit 1 ;;
+esac
+got=$($UNPACK -versionsfile -get "$VF_UUID" alpha | tr -d '\r')
+if [ "$got" != "$new" ]; then
+	echo Failed
+	exit 1
+fi
+
+$UNPACK -vf -get "$VF_UUID" missing >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+got=$($UNPACK -vf -get "$VF_CI" alpha | tr -d '\r')
+if [ "$got" != "3zNTcmSVEx7JH9YSULpruqXpBC4=" ]; then
+	echo Failed
+	exit 1
+fi
+
+cp "$VF_CI" vf-ci-before.txt
+$UNPACK -vf -set "$VF_CI" beta AAAAAAAAAAAAAAAAAAAAAAAAAAA= >/dev/null
+got=$($UNPACK -vf -get "$VF_CI" beta | tr -d '\r')
+if [ "$got" != "AAAAAAAAAAAAAAAAAAAAAAAAAAA=" ]; then
+	echo Failed
+	exit 1
+fi
+got=$($UNPACK -vf -get "$VF_CI" alpha | tr -d '\r')
+if [ "$got" != "3zNTcmSVEx7JH9YSULpruqXpBC4=" ]; then
+	echo Failed
+	exit 1
+fi
+# version/root не должны меняться
+head -c 80 vf-ci-before.txt > vf-ci-head1.bin
+head -c 80 "$VF_CI" > vf-ci-head2.bin
+diff vf-ci-head1.bin vf-ci-head2.bin >$DIFFLOG 2>&1
+if [ $? -ne 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+$UNPACK -vf -set "$VF_CI" beta not-base64 >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+$UNPACK -vf -set "$VF_CI" beta YQ== >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+old=$($UNPACK -vf -get "$VF_CI" alpha | tr -d '\r')
+new=$($UNPACK -vf -update "$VF_CI" alpha | tr -d '\r')
+if [ -z "$new" ] || [ "$new" = "$old" ] || [ ${#new} -ne 28 ]; then
+	echo Failed
+	exit 1
+fi
+got=$($UNPACK -vf -get "$VF_CI" alpha | tr -d '\r')
+if [ "$got" != "$new" ]; then
+	echo Failed
+	exit 1
+fi
+
+$UNPACK -vf -show missing-vf.txt >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+
+# SET -LF: несколько строк, лишние пробелы и пустые строки
+printf '\xef\xbb\xbf{1,3,"",aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa,"alpha",bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb,"beta",eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee}' > vf-list-uuid.txt
+printf '%s\n' \
+	'alpha    11111111-1111-1111-1111-111111111111' \
+	'' \
+	'beta	22222222-2222-2222-2222-222222222222' \
+	> vf-set-list.txt
+$UNPACK -vf -set -lf vf-set-list.txt vf-list-uuid.txt >/dev/null
+got=$($UNPACK -vf -get vf-list-uuid.txt alpha | tr -d '\r')
+if [ "$got" != "11111111-1111-1111-1111-111111111111" ]; then
+	echo Failed
+	exit 1
+fi
+got=$($UNPACK -vf -get vf-list-uuid.txt beta | tr -d '\r')
+if [ "$got" != "22222222-2222-2222-2222-222222222222" ]; then
+	echo Failed
+	exit 1
+fi
+
+# ошибка в списке не меняет файл
+printf '%s\n' \
+	'alpha 33333333-3333-3333-3333-333333333333' \
+	'missing 44444444-4444-4444-4444-444444444444' \
+	> vf-set-bad.txt
+$UNPACK -vf -set -list vf-set-bad.txt vf-list-uuid.txt >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+	echo Failed
+	exit 1
+fi
+got=$($UNPACK -vf -get vf-list-uuid.txt alpha | tr -d '\r')
+if [ "$got" != "11111111-1111-1111-1111-111111111111" ]; then
+	echo Failed
+	exit 1
+fi
+
+# UPDATE -LF
+printf '%s\n' alpha beta > vf-upd-list.txt
+old_alpha=$($UNPACK -vf -get vf-list-uuid.txt alpha | tr -d '\r')
+old_beta=$($UNPACK -vf -get vf-list-uuid.txt beta | tr -d '\r')
+$UNPACK -vf -update -lf vf-upd-list.txt vf-list-uuid.txt > vf-upd-out.txt
+new_alpha=$($UNPACK -vf -get vf-list-uuid.txt alpha | tr -d '\r')
+new_beta=$($UNPACK -vf -get vf-list-uuid.txt beta | tr -d '\r')
+if [ -z "$new_alpha" ] || [ "$new_alpha" = "$old_alpha" ] || [ "$new_beta" = "$old_beta" ]; then
+	echo Failed
+	exit 1
+fi
+if ! grep -q "$new_alpha" vf-upd-out.txt || ! grep -q "$new_beta" vf-upd-out.txt; then
+	echo Failed
+	exit 1
+fi
+
+# SET -LF для configinfo
+printf '%s\n' \
+	'alpha  AAAAAAAAAAAAAAAAAAAAAAAAAAA=' \
+	'beta   3zNTcmSVEx7JH9YSULpruqXpBC4=' \
+	> vf-set-ci.txt
+$UNPACK -vf -set -lf vf-set-ci.txt "$VF_CI" >/dev/null
+got=$($UNPACK -vf -get "$VF_CI" alpha | tr -d '\r')
+if [ "$got" != "AAAAAAAAAAAAAAAAAAAAAAAAAAA=" ]; then
+	echo Failed
+	exit 1
+fi
+got=$($UNPACK -vf -get "$VF_CI" beta | tr -d '\r')
+if [ "$got" != "3zNTcmSVEx7JH9YSULpruqXpBC4=" ]; then
+	echo Failed
+	exit 1
+fi
+
+echo Passed
+
 rm -rf "$DEL_SRC" "$DEL_OUT" "$DEL_CF" "$ADD_OUT" "$ADD_SRC" "$ADD_CF" add-dir pipe-out
-rm -f add-extra.txt add-plain.txt add-build.txt unpack-src.cf unpack-stdout.bin pipe-dest.cf $DIFFLOG
+rm -f add-extra.txt add-plain.txt add-build.txt unpack-src.cf unpack-stdout.bin pipe-dest.cf \
+	"$VF_UUID" "$VF_CI" vf-show.txt vf-ci-before.txt vf-ci-head1.bin vf-ci-head2.bin \
+	vf-list-uuid.txt vf-set-list.txt vf-set-bad.txt vf-upd-list.txt vf-upd-out.txt vf-set-ci.txt $DIFFLOG
 
 rm -rf $DIRNAME
 rm -rf $OUTDIRNAME

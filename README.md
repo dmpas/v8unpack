@@ -60,4 +60,10 @@ sudo dpkg -i v8unpack.deb
   -PUT [-PACK|-BUILD [-NOPACK]] -LISTFILES|-LF listfile out_filename
   -B[UILD] [-N[OPACK]] in_dirname         out_filename
   -B[UILD] [-N[OPACK]] -L[IST] listfile
+  -VERSIONSFILE|-VF    -SHOW   in_filename
+  -VERSIONSFILE|-VF    -GET    in_filename  block_name
+  -VERSIONSFILE|-VF    -SET    in_filename  block_name  version
+  -VERSIONSFILE|-VF    -SET    -LIST|-LF listfile  in_filename
+  -VERSIONSFILE|-VF    -UPDATE in_filename  block_name
+  -VERSIONSFILE|-VF    -UPDATE -LIST|-LF listfile  in_filename
 ```

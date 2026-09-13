@@ -18,10 +18,12 @@ at http://mozilla.org/MPL/2.0/.
 //
 
 #include "V8File.h"
+#include "VersionsTable.h"
 #include "version.h"
 #include <iostream>
 #include <algorithm>
 #include <sstream>
+#include <utility>
 #include <boost/filesystem/fstream.hpp>
 
 using namespace std;
@@ -63,6 +65,12 @@ int usage(vector<string> &argv)
 	cout << "  -L[IST]              listfile" << endl;
 	
 	cout << "  -LISTFILES|-LF       in_filename" << endl;
+	cout << "  -VERSIONSFILE|-VF    -SHOW   in_filename" << endl;
+	cout << "  -VERSIONSFILE|-VF    -GET    in_filename  block_name" << endl;
+	cout << "  -VERSIONSFILE|-VF    -SET    in_filename  block_name  version" << endl;
+	cout << "  -VERSIONSFILE|-VF    -SET    -LIST|-LF listfile  in_filename" << endl;
+	cout << "  -VERSIONSFILE|-VF    -UPDATE in_filename  block_name" << endl;
+	cout << "  -VERSIONSFILE|-VF    -UPDATE -LIST|-LF listfile  in_filename" << endl;
 
 	cout << "  -E[XAMPLE]" << endl;
 	cout << "  -BAT" << endl;
@@ -255,6 +263,167 @@ int put(vector<string> &argv)
 	return add_or_put(argv, true);
 }
 
+static bool is_vf_list_flag(const string &value)
+{
+	return value == "-lf" || value == "-listfiles" || value == "-list" || value == "-l";
+}
+
+static string trim_copy(string value)
+{
+	size_t begin = 0;
+	while (begin < value.size() && (value[begin] == ' ' || value[begin] == '\t')) {
+		begin++;
+	}
+	size_t end = value.size();
+	while (end > begin && (value[end - 1] == ' ' || value[end - 1] == '\t' || value[end - 1] == '\r')) {
+		end--;
+	}
+	return value.substr(begin, end - begin);
+}
+
+static bool split_name_version(const string &line, string &name, string &version)
+{
+	size_t i = 0;
+	while (i < line.size() && line[i] != ' ' && line[i] != '\t') {
+		i++;
+	}
+	if (i == 0 || i >= line.size()) {
+		return false;
+	}
+	name = line.substr(0, i);
+	version = trim_copy(line.substr(i));
+	return !version.empty();
+}
+
+static int read_set_listfile(const string &listfile, vector<pair<string, string>> &items)
+{
+	boost::filesystem::ifstream in(listfile);
+	if (!in) {
+		cerr << "VersionsFile. List file not found: " << listfile << endl;
+		return V8UNPACK_SOURCE_DOES_NOT_EXIST;
+	}
+
+	string line;
+	while (getline(in, line)) {
+		line = trim_copy(line);
+		if (line.empty()) {
+			continue;
+		}
+		string name;
+		string version;
+		if (!split_name_version(line, name, version)) {
+			cerr << "VersionsFile. Invalid list line: " << line << endl;
+			return V8UNPACK_ERROR;
+		}
+		items.push_back(make_pair(name, version));
+	}
+
+	if (items.empty()) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+	return V8UNPACK_OK;
+}
+
+static int read_update_listfile(const string &listfile, vector<string> &names)
+{
+	boost::filesystem::ifstream in(listfile);
+	if (!in) {
+		cerr << "VersionsFile. List file not found: " << listfile << endl;
+		return V8UNPACK_SOURCE_DOES_NOT_EXIST;
+	}
+
+	string line;
+	while (getline(in, line)) {
+		line = trim_copy(line);
+		if (line.empty()) {
+			continue;
+		}
+		names.push_back(line);
+	}
+
+	if (names.empty()) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+	return V8UNPACK_OK;
+}
+
+int versionsfile(vector<string> &argv)
+{
+	if (argv.empty() || argv[0].empty()) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
+	string cmd = to_lower_copy(argv[0]);
+	if (cmd == "-show") {
+		if (argv.size() < 2 || argv[1].empty()) {
+			return V8UNPACK_SHOW_USAGE;
+		}
+		return VersionsShow(argv[1]);
+	}
+	if (cmd == "-get") {
+		if (argv.size() < 3 || argv[1].empty()) {
+			return V8UNPACK_SHOW_USAGE;
+		}
+		return VersionsGet(argv[1], argv[2]);
+	}
+
+	if (cmd == "-set" || cmd == "-update") {
+		string listfile;
+		vector<string> positional;
+
+		for (size_t i = 1; i < argv.size(); i++) {
+			if (argv[i].empty()) {
+				continue;
+			}
+			string al = to_lower_copy(argv[i]);
+			if (is_vf_list_flag(al)) {
+				if (i + 1 >= argv.size() || argv[i + 1].empty()) {
+					return V8UNPACK_SHOW_USAGE;
+				}
+				listfile = argv[++i];
+				continue;
+			}
+			if (al[0] == '-') {
+				return V8UNPACK_SHOW_USAGE;
+			}
+			positional.push_back(argv[i]);
+		}
+
+		if (!listfile.empty()) {
+			if (positional.size() != 1 || positional[0].empty()) {
+				return V8UNPACK_SHOW_USAGE;
+			}
+			if (cmd == "-set") {
+				vector<pair<string, string>> items;
+				int ret = read_set_listfile(listfile, items);
+				if (ret != V8UNPACK_OK) {
+					return ret;
+				}
+				return VersionsSet(positional[0], items);
+			}
+			vector<string> names;
+			int ret = read_update_listfile(listfile, names);
+			if (ret != V8UNPACK_OK) {
+				return ret;
+			}
+			return VersionsUpdate(positional[0], names);
+		}
+
+		if (cmd == "-set") {
+			if (positional.size() < 3 || positional[0].empty() || positional[2].empty()) {
+				return V8UNPACK_SHOW_USAGE;
+			}
+			return VersionsSet(positional[0], positional[1], positional[2]);
+		}
+		if (positional.size() < 2 || positional[0].empty()) {
+			return V8UNPACK_SHOW_USAGE;
+		}
+		return VersionsUpdate(positional[0], positional[1]);
+	}
+
+	return V8UNPACK_SHOW_USAGE;
+}
+
 int process_list(vector<string> &argv)
 {
 	if (argv.empty()) {
@@ -387,6 +556,11 @@ handler_t get_run_mode(const vector<string> &args, int &arg_base, bool &allow_li
 	if (cur_mode == "-put") {
 		allow_listfile = false;
 		return put;
+	}
+
+	if (cur_mode == "-versionsfile" || cur_mode == "-vf") {
+		allow_listfile = false;
+		return versionsfile;
 	}
 
 	if (cur_mode == "-build" || cur_mode == "-b") {
